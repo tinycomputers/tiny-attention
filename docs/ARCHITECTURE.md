@@ -116,7 +116,27 @@ N = 32, non-causal:
 levels off near 6×. FlashAttention's real asymptotic win comes from a large on-chip Q block, which is why
 `cfg_qrows` is a runtime knob and L4 shows it.
 
-## 7. Open until Phase 4
+## 7. Phase 2 RTL contracts
+
+Combinational arithmetic units (`exp2_unit`, `recip_unit`, `scale_mask`, `row_max`) are bit-exact with `fixed.py`;
+the controller adds registers around them in Phase 3/4 as timing requires.
+
+| Module | Contract |
+|---|---|
+| `pe` | `psum_out <= psum_in + a_in * w`, `a_out <= a_in`; one register each. `A_SIGNED=0` zero-extends (MM2's 9-bit P). |
+| `systolic_array` | N×N weight-stationary. Weights load one row per cycle (`w_we_row[r]`); activations must arrive skewed. Column c holds C[i][c] during cycle `t_i + N + c`. |
+| `mm_engine` | Skews A in, deskews C out. **Latency = 2N−1 = 7 cycles** from `a_valid` to `c_valid`, gaps allowed, invalid rows feed zeros. Weights must not change while rows are in flight. MM1: `A_W=8, A_SIGNED=1, ACC_W=17` (A = Q, W = Kᵀ). MM2: `A_W=9, A_SIGNED=0, ACC_W=18` (A = P, W = V). |
+| `scale_mask` | `Z = sat((S·cfg_scale) >>> 12)` clipped to ±32767, `0x8000` when masked. |
+| `row_max` | signed max of N values; `0x8000` never wins unless all inputs are masked. |
+| `exp2_unit` | exact for every x ≤ 0 (verified over all 65 537 inputs); x > 0 saturates to `0xFFFF`. |
+| `recip_unit` | exact for every UQ1.15 mantissa and every exponent; `l = 0` returns `r = 0, k = 0`. Two chained multiplies: register it before Phase 10 timing closure. |
+
+Verification of this phase: `bash sim/lint.sh` (`-Wall`, every top, MM2 parameters) and `bash sim/run_unit.sh`
+(PE, array, engine in both MM1 and MM2 configurations, row_max, scale_mask 30 000 random + edge cases,
+exp2 exhaustive, recip exhaustive over every mantissa). A deliberate bug in the reciprocal Newton step or in the
+engine's deskew delay makes the suites fail.
+
+## 8. Open until Phase 4
 
 - Controller timing diagram for synchronous SRAM + HBM latency (written before the controller RTL).
 - SRAM sizing for `cfg_qrows = 32`: `m, l` 32 entries each, `O` 32 × 4 × 26 bit ≈ 400 B, plus 32 Q rows.

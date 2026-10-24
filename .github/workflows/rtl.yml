@@ -45,14 +45,20 @@ jobs:
         run: pip install -r sim/requirements.txt
 
       # Golden models: exp2/recip, both schedules, accuracy bounds, traffic, presets, and the check that
-      # rtl/mem/*.mem matches gen_luts.py. Full 1000-seed sweep (about 20 s).
+      # rtl/lut_pkg.sv matches gen_luts.py. Full 1000-seed sweep (about 20 s).
       - name: Golden model tests
         run: python -m pytest sim/golden -q
         env:
           SEEDS: '1000'
 
-      - name: Lint RTL
-        run: verilator --lint-only -Wall --top-module counter rtl/spike/counter.sv
+      - name: Lint RTL (-Wall, every module, plus the MM2 parameter set)
+        run: |
+          verilator --lint-only -Wall --top-module counter rtl/spike/counter.sv
+          bash sim/lint.sh
+
+      # One SIM_BUILD per suite and parameter set; exp2/recip are exhaustive. About 2 minutes.
+      - name: cocotb unit suites
+        run: bash sim/run_unit.sh
 
       # Each suite gets its own SIM_BUILD: cocotb does not detect a TOPLEVEL change
       # across runs sharing one sim_build/ and reuses the stale binary.

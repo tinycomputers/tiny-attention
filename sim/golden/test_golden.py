@@ -24,9 +24,7 @@ def inputs(seed, n, amp=2.5):
 
 # ------------------------------------------------------------------ LUTs
 def test_lut_files_fresh():
-    d = gen_luts.MEM_DIR
-    assert (d / "exp2_lut.mem").read_text() == gen_luts._fmt(gen_luts.exp2_lut()), "run gen_luts.py"
-    assert (d / "recip_lut.mem").read_text() == gen_luts._fmt(gen_luts.recip_lut()), "run gen_luts.py"
+    assert gen_luts.PKG_PATH.read_text() == gen_luts.render_pkg(), "rtl/lut_pkg.sv is stale: run gen_luts.py"
 
 
 def test_lut_ranges():
