@@ -44,6 +44,13 @@ jobs:
       - name: Install Python deps
         run: pip install -r sim/requirements.txt
 
+      # Golden models: exp2/recip, both schedules, accuracy bounds, traffic, presets, and the check that
+      # rtl/mem/*.mem matches gen_luts.py. Full 1000-seed sweep (about 20 s).
+      - name: Golden model tests
+        run: python -m pytest sim/golden -q
+        env:
+          SEEDS: '1000'
+
       - name: Lint RTL
         run: verilator --lint-only -Wall --top-module counter rtl/spike/counter.sv
 

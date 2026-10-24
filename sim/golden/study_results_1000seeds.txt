@@ -1,0 +1,53 @@
+== P width sweep (N=32, FLASH, 1000 seeds per cell)
+soft  pf=5                         dp max 11.576 mean 0.4951 | tot max 11.309 mean 0.5591
+soft  pf=6                         dp max  6.080 mean 0.2603 | tot max  5.701 mean 0.3600
+soft  pf=7                         dp max  3.309 mean 0.1352 | tot max  3.869 mean 0.2752
+soft  pf=8                         dp max  1.572 mean 0.0701 | tot max  4.088 mean 0.2438
+peaky pf=5                         dp max  8.862 mean 0.4016 | tot max 11.935 mean 0.6607
+peaky pf=6                         dp max  4.469 mean 0.2251 | tot max 11.912 mean 0.5428
+peaky pf=7                         dp max  2.052 mean 0.1250 | tot max 11.904 mean 0.4913
+peaky pf=8                         dp max  1.260 mean 0.0691 | tot max 11.904 mean 0.4722
+sharp pf=5                         dp max  6.742 mean 0.2361 | tot max 21.089 mean 0.6762
+sharp pf=6                         dp max  3.850 mean 0.1341 | tot max 20.401 mean 0.6218
+sharp pf=7                         dp max  2.383 mean 0.0758 | tot max 21.257 mean 0.5989
+sharp pf=8                         dp max  1.046 mean 0.0422 | tot max 20.999 mean 0.5900
+== rounding knobs (peaky, N=32, exp/z/acc round vs truncate)
+all truncate (default)             dp max  1.260 mean 0.0691 | tot max 11.904 mean 0.4722
+exp round                          dp max  1.260 mean 0.0685 | tot max 11.900 mean 0.4721
+z round                            dp max  1.260 mean 0.0690 | tot max 11.904 mean 0.4720
+acc round                          dp max  1.260 mean 0.0682 | tot max 11.896 mean 0.4720
+all round                          dp max  1.260 mean 0.0677 | tot max 11.896 mean 0.4718
+== recip refinement (peaky, N=32)
+nr_steps=0                         dp max  1.437 mean 0.1264 | tot max 11.892 mean 0.4910
+nr_steps=1                         dp max  1.260 mean 0.0691 | tot max 11.904 mean 0.4722
+nr_steps=2                         dp max  1.260 mean 0.0692 | tot max 11.904 mean 0.4723
+== l/O extra fractional bits (peaky, N=32)
+lf=of=2                            dp max  1.260 mean 0.0723 | tot max 11.912 mean 0.4728
+lf=of=4                            dp max  1.260 mean 0.0691 | tot max 11.904 mean 0.4722
+lf=of=6                            dp max  1.260 mean 0.0684 | tot max 11.900 mean 0.4721
+lf=of=8                            dp max  1.260 mean 0.0683 | tot max 11.900 mean 0.4720
+== cfg_scale fractional bits sf (cfg_scale is 24 bits; N=32)
+small sf=12  overflow: cfg_scale 0 does not fit 24 bits at sf=12 (inputs badly scaled)
+small sf=16                        dp max  1.143 mean 0.0631 | tot max  1.101 mean 0.0798
+small sf=20                        dp max  0.080 mean 0.0106 | tot max  0.223 mean 0.0424
+small sf=24                        dp max  0.056 mean 0.0095 | tot max  0.219 mean 0.0421
+soft  sf=12                        dp max 19.778 mean 1.1309 | tot max 19.950 mean 1.1711
+soft  sf=16                        dp max  2.414 mean 0.1072 | tot max  4.147 mean 0.2580
+soft  sf=20                        dp max  1.572 mean 0.0701 | tot max  4.088 mean 0.2438
+soft  sf=24                        dp max  1.572 mean 0.0700 | tot max  3.979 mean 0.2439
+sharp sf=12                        dp max  2.801 mean 0.1098 | tot max 20.401 mean 0.6020
+sharp sf=16                        dp max  1.046 mean 0.0430 | tot max 20.999 mean 0.5901
+sharp sf=20                        dp max  1.046 mean 0.0422 | tot max 20.999 mean 0.5900
+sharp sf=24                        dp max  1.046 mean 0.0422 | tot max 20.999 mean 0.5901
+== sequence length and causal (default fmt)
+N= 4 causal=0 flash                dp max  0.624 mean 0.0665 | tot max  6.431 mean 0.3839
+N= 4 causal=1 flash                dp max  0.591 mean 0.0418 | tot max  8.085 mean 0.3209
+N= 8 causal=0 flash                dp max  0.849 mean 0.0640 | tot max 10.942 mean 0.4172
+N= 8 causal=1 flash                dp max  0.849 mean 0.0486 | tot max  8.855 mean 0.3728
+N=16 causal=0 flash                dp max  1.061 mean 0.0661 | tot max  9.016 mean 0.4541
+N=16 causal=1 flash                dp max  0.981 mean 0.0529 | tot max  9.383 mean 0.4065
+N=32 causal=0 flash                dp max  1.260 mean 0.0691 | tot max 11.904 mean 0.4722
+N=32 causal=1 flash                dp max  1.023 mean 0.0563 | tot max 13.076 mean 0.4403
+== FLASH vs NAIVE (peaky, default fmt)
+flash N=32                         dp max  1.260 mean 0.0691 | tot max 11.904 mean 0.4722
+naive N=32                         dp max  1.744 mean 0.0989 | tot max 11.806 mean 0.4798

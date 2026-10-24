@@ -12,7 +12,7 @@ in the browser.
 
 Pipeline: `rtl/*.sv` -> Verilator C++ -> Emscripten -> `web/public/tiny_attn.wasm` -> React island -> SVG.
 
-## Commands (available from Phase 0; toolchain copied from tiny-cpu)
+## Commands (toolchain copied from tiny-cpu)
 
 Toolchains are project-local (no root needed). Bootstrap once, then source the env in every shell:
 
@@ -26,8 +26,9 @@ Never export `VERILATOR_ROOT`.
 
 ### Golden model (Phase 1)
 ```bash
-pytest sim/golden -q
+pytest sim/golden -q                  # SEEDS=1000 for the full sweep
 python sim/golden/gen_luts.py     # regenerates rtl/mem/*.mem; commit the result
+python sim/golden/study.py 200    # numerics study (see docs/NUMERICS.md)
 ```
 
 ### RTL lint
