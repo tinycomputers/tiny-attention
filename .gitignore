@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Frontend build outputs
+web/dist/
+web/.astro/
+
+# Verilator object directories
+obj_dir/
+
+# cocotb / pytest artifacts
+__pycache__/
+.pytest_cache/
+sim/sim_build/
+sim/results.xml
+
+# Waveform dumps
+*.vcd
+*.fst
+
+# Python virtual environment
+.venv/
+
+# WASM build intermediates and generated artifacts
+wasm/build/
+web/public/tiny_attn.mjs
+web/public/spike/
+*.o
+*.wasm
+!web/public/tiny_attn.wasm
+
+# Toolchain checkouts (built by .tools/*.sh, or symlinked to a sibling project's)
+.tools/*
+!.tools/setup.sh
+!.tools/emsdk.sh
+
+# OS / editor cruft
+.DS_Store
+*.swp
+
+# Agent scratch
+.agents/
+.claude/

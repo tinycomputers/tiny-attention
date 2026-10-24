@@ -1,0 +1,28 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+:root {
+  --bg: #0d1117;
+  --fg: #c9d1d9;
+  --muted: #8b949e;
+  --accent: #58a6ff;
+  --ok: #3fb950;
+  --err: #f85149;
+  --panel: #161b22;
+}
+
+:root[data-theme="light"] {
+  --bg: #ffffff;
+  --fg: #1f2328;
+  --muted: #59636e;
+  --accent: #0969da;
+  --ok: #1a7f37;
+  --err: #cf222e;
+  --panel: #f6f8fa;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "Inter Variable", system-ui, sans-serif;
+}

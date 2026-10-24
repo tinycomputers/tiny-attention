@@ -1,0 +1,3 @@
+# Keep .vercel/project.json committed — it pins the project link so
+# re-linking is never needed. Only ignore the generated README inside.
+.vercel/README.txt

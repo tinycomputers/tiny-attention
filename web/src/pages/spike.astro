@@ -1,0 +1,15 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import SpikeCounter from "@/components/SpikeCounter";
+---
+
+<Layout title="TinyAttention WASM spike">
+  <main class="mx-auto max-w-2xl px-4 py-16">
+    <h1 class="text-2xl font-bold">WASM toolchain spike</h1>
+    <p class="mt-2" style="color: var(--muted)">
+      Two independent instances of one Verilated counter in a single WebAssembly module, ticking at
+      different speeds.
+    </p>
+    <SpikeCounter client:only="react" />
+  </main>
+</Layout>
