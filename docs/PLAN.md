@@ -432,7 +432,7 @@ The estimates assume one person part-time, at tiny-cpu's pace.
   (no memory system yet): one Q block streams through several KV blocks.
 - **Exit:** `test_tile_lockstep.py` is green for N = 4…32 on a single Q block; the waveform shows MM1 → softmax → MM2.
 
-### Phase 4: Memory system + FLASH controller (2 weeks)
+### Phase 4: Memory system + FLASH controller (2 weeks) ✅ DONE
 - `sram_bank`, `hbm_model`, `dma`, `controller` (FLASH + causal), `perf_counters`, `tiny_attn_top` with
   the host load port and every `dbg_*` port.
 - Write the controller timing diagram in `ARCHITECTURE.md` **before** coding it.

@@ -25,4 +25,10 @@ package tiny_attn_pkg;
     localparam logic signed [Z_W-1:0] Z_MASK = 16'sh8000;  // masked logit; unmasked Z saturates to +-32767
     localparam logic signed [Z_W-1:0] Z_MAX  = 16'sh7fff;
     localparam logic signed [Z_W-1:0] Z_MIN  = 16'sh8001;
+    // HBM layout (word addresses). Q, K, V: one word per row (4 int8). O: two words per row (lanes 0-1, 2-3).
+    localparam int HBM_AW  = 8;    // 256 words
+    localparam int Q_BASE  = 0;
+    localparam int K_BASE  = 32;
+    localparam int V_BASE  = 64;
+    localparam int O_BASE  = 96;
 endpackage

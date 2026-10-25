@@ -19,12 +19,23 @@ running max, rescale factor, SRAM tile and HBM byte comes from a `dbg_*` port on
   `-Wall` clean (`bash sim/lint.sh`), all cocotb suites green (`bash sim/run_unit.sh`, ~2 min).
 - Phase 3 (one tile end to end): DONE. `online_softmax, o_accumulator, normalize, attn_tile` (MM1 -> softmax -> MM2 -> O,
   then normalize); lockstep vs `fixed.flash(trace=True)` at every tile boundary; tile = 20 cycles `tile_start` -> `tile_done`.
-- Next: Phase 4 (memory system + FLASH controller: sram_bank, hbm_model, dma, controller, perf_counters, tiny_attn_top).
-  Write the controller timing diagram in docs/ARCHITECTURE.md BEFORE the RTL.
+
 
 ## Local toolchain note
 `.tools/verilator-install` and `.tools/emsdk` are symlinks to tiny-cpu's builds (gitignored) to avoid recompiling.
 On a fresh machine delete the symlinks and run `.tools/setup.sh` and `.tools/emsdk.sh` instead.
+
+- Phase 4 (memory + FLASH controller + top): DONE. `sram_bank, hbm_model, dma, flash_ctrl, perf_counters, tiny_attn_top`
+  and the 32-row attn_tile. End to end: bit-exact O, HBM bytes, tiles, K/V loads and busy cycles all equal the golden /
+  closed-form models for every N, causal, cfg_qrows and latency tested (`SEEDS=200 bash sim/run_e2e.sh`).
+- Next: Phase 5 (cfg_overlap_en ping-pong K/V prefetch, NAIVE schedule, latency sweep, perf baseline pins).
+
+## Gotchas found in Phase 4
+- Disk: the root filesystem was 100% full during Phase 4. The Bash tool writes its output to /tmp, so with no space every
+  command failed, even `true`. Build dirs (sim/sim_build) are deleted after each suite in run_unit.sh / run_e2e.sh for this reason.
+- Config ports take tile counts (cfg_nb = N/4, cfg_gg = qrows/4), not raw values, so no unused low bits reach lint.
+- DMA word index is 6 bits (bursts are at most 64 words); staging reads use index[5:1].
+- The first plan's per-tile cycle estimate (2L+32) was wrong. The real schedule is in ARCHITECTURE.md section 9.3.
 
 ## Gotchas found in Phase 3
 - `fixed.flash` calls `online_softmax_step` and `o_update`; the RTL modules are tested against those same functions, so the

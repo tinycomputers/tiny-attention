@@ -8,7 +8,7 @@ Fourth project in the series after [tiny-gpu](https://github.com/deaneeth/tiny-g
 [tiny-tpu](https://github.com/deaneeth/tiny-tpu) and tiny-cpu. Same rule as the others: nothing on screen is
 faked; every value comes from a `dbg_*` port on the compiled RTL.
 
-**Status:** Phases 0-3 done: toolchain spike, bit-exact golden models + numerics study, the RTL arithmetic blocks, and a tile core that runs one Q block through MM1, online softmax, MM2 and normalization, matching the golden model at every tile boundary. See [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.
+**Status:** Phases 0-4 done: toolchain spike, bit-exact golden models and numerics study, the RTL arithmetic blocks, the tile core, and the full FLASH engine (HBM model, DMA, controller) matching the golden model bit for bit, with byte counts and cycle counts pinned. See [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.
 
 ## Quick start
 

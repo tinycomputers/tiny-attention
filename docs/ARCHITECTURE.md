@@ -178,92 +178,83 @@ corner cases (all logits equal with V = ±127, max |S|, saturating `cfg_scale`, 
 attention, first causal row), and five Q blocks back to back to prove `blk_clear`. A wrong causal-mask boundary or
 feeding the wrong row's α into the O update makes it fail with a diff naming the tile and the value.
 
-## 9. Phase 4: memory system and FLASH controller (design, written before RTL)
+## 9. Phase 4: memory system and FLASH controller (as built)
 
-### 9.1 Memory model
+Verified by `sim/test_e2e.py`: bit-exact O, HBM bytes, tile count and K/V loads equal `traffic.py`, and busy
+cycles equal `sim/golden/schedule.py`, for every N in {4..32}, causal on/off, every `cfg_qrows` in {4,8,16,32} with
+`cfg_qrows ≤ N`, `cfg_hbm_latency` 0..64, and 200 random seeds (`SEEDS=200 bash sim/run_e2e.sh`).
 
-- **HBM model** (`hbm_model.sv`): word-addressed, 4-byte words holding four int8 values (or 2 int16 / 1 int32 for Z, O).
-  A read request returns data `cfg_hbm_latency` cycles later through a delay pipeline (1 word/cycle throughput, so a
-  burst of W words finishes at `latency + W` cycles). Byte counters `hbm_rd_bytes` and `hbm_wr_bytes` count payload
-  bytes only.
-- **SRAM** (`sram_bank.sv`): synchronous read, 1-cycle latency, one read and one write port. Buffers: `Q` (4 rows),
-  `K` ×2 and `V` ×2 (ping-pong when `cfg_overlap_en`, otherwise only buffer 0 is used), `Z` and `P` (NAIVE only),
-  `O` (4 rows, Q8.8 output staging).
-- **DMA** (`dma.sv`): one request at a time. It moves a tile between HBM and an SRAM buffer, one word per cycle after
-  the latency. K tiles are read row-major; the MM1 weight load needs Kᵀ, so the DMA loads K rows and the engine reads
-  column-major in the 4-cycle weight load (no transpose buffer).
+### 9.1 Memory
 
-### 9.2 Controller timing: one FLASH block with `cfg_qrows = 4`, latency L
+| Block | What it is | Timing |
+|---|---|---|
+| `hbm_model` | 256 × 32-bit words; combinational reads; DMA write port; host load port; byte counters (4 B per DMA word, cleared by `start`) | no latency of its own |
+| `dma` | one burst at a time; read or posted write | read: `cfg_latency` cycles then 1 word/cycle; write: 1 word/cycle, no latency |
+| `sram_bank` | output staging, 32 rows × 64 bit, one write and one read port | **combinational read** (distributed-RAM style) |
+| Q buffer (in `attn_tile`) | 32 rows × 32 bit | registers |
+| K, V (in `tiny_attn_top`) | 4 words each | registers |
 
-Times are in cycles from the start of the block. `L = cfg_hbm_latency`. Each transfer below is one request; the
-controller issues the next request only when the previous one has finished (no request queueing in v1).
+Read bursts of W words complete (done pulse visible) in cycle `L + W + 2` counting the start cycle as 0; write bursts
+in `W + 1`. Pinned in `sim/test_dma.py`.
+
+HBM layout (word addresses): Q rows 0..31 (one word = four int8), K rows 32..63, V rows 64..95, O rows 96..159
+(two words per row: lanes 0-1, lanes 2-3, int16 each).
+
+Deviation from the first plan: the SRAM is combinational-read here. A block-RAM mapping needs one prefetch stage on
+the read side; that belongs to the FPGA task (Phase 9). Phase 4 counts the same cycles either way because no state
+machine stage depends on the read latency.
+
+### 9.2 Controller (`flash_ctrl`)
+
+States: `IDLE → BLK → (LDQ, LDQ_W) → per K/V tile { LDK, LDK_W, LDV, LDV_W, WLOAD, per group TILE / TILE_W, TILE at end } → NORM, NORM_W → STO, STO_W → (next block | DONE)`.
+
+- A block is `cfg_qrows / 4` row groups; the last block may be smaller.
+- The K/V tile loop runs `kj = 0 .. last`, where `last = block's last group` when causal, else `N/4 − 1`.
+- A K/V tile is DMA'd **once per block** and used by every unmasked group of the block. This is why `cfg_qrows`
+  reduces traffic (see `traffic.py`), and why the output does not depend on it.
+- Group tiles are issued one at a time. Each takes `tile_start` plus 20 cycles (`TILE` + `TILE_W` = 21 busy cycles).
+  A masked (causal, `kj > group`) group costs one cycle in `TILE` and is not computed.
+
+### 9.3 Cycle model (exact)
+
+Busy cycles from the first state after `start` through `DONE`, inclusive (`sim/golden/schedule.py`):
 
 ```
-cycle        0            L+4         L+8            ...   
-Q DMA        |-- Q tile 4 words (L+4 cycles) --|
-               (idle while Q is in flight)
-
-for kj = 0 .. last:
-  K DMA      |------ K tile, 4 words: L+4 ------|
-  V DMA                                          |------ V tile: L+4 ------|
-  weight load                                                                |4|
-  tile       tile_start ........... tile_done (20 cycles)
-             |<-------- 24 + L+4+L+4 cycles per tile (no overlap) -------->|
+1                                         DONE
+per block (bg groups, gb first group):
+  1 + 1 + (L + 4·bg + 2)                  BLK, Q load (4·bg words)
+  per K/V tile kj (kj = 0 .. last):
+    2 · (1 + L + 6)                       K load and V load (4 words each)
+    4                                     weight load
+    per group: 21 if tiled, 1 if masked
+    1                                     end of K/V tile
+  1 + (4·bg + 1)                          NORM, NORM_W
+  1 + (8·bg + 1)                          STO, STO_W (posted, 8·bg words)
 ```
 
-Without overlap, one K/V tile costs `2·(L+4) + 4 + 20 = 2L + 32` cycles. With `cfg_overlap_en`, the DMA for tile
-`kj+1` (K then V, `2·(L+4)` cycles) runs while tile `kj` computes (weight load + 20 cycles). Steady state is then
-`max(2L + 8, 24)` cycles per tile:
+Example values from the model: N = 16, non-causal, `cfg_qrows = 4`: 737 cycles at L = 0, 1097 at L = 10.
+N = 16, causal, `cfg_qrows = 16`, L = 10: 455 cycles (the causal skip is visible here).
 
-```
-tile kj:     [wload 4][ compute 20 ]
-DMA kj+1:    [ K   L+4 ][ V  L+4 ]          overlapped with tile kj compute
-             steady state: period = max(2(L+4), 24)
-```
+The first plan's estimate of `2L + 32` per tile was wrong: it counted the DMA as `L + 4` and left out the state
+transitions. The schedule above is what the RTL does.
 
-Ping-pong rule: buffer `kj mod 2` holds the tile under compute; the DMA writes buffer `(kj+1) mod 2`. The DMA never
-writes the buffer the engine is reading, so no hazard checks are needed.
+### 9.4 Traffic (exact)
 
-### 9.3 Causal and block control
+`traffic.py` FLASH: reads = `16·nb` (Q) + `32·kv_tile_loads` (K and V); writes = `32·nb` (O). Both are checked against
+the byte counters of the running engine for every test run.
 
-- Q block `qi` (of `cfg_qrows` rows): load its Q rows, then loop `kj` over `0 .. last`, where
-  `last = qi` when causal and `N/4 − 1` otherwise. Tiles above the block's diagonal are never requested, so they cost
-  no DMA and no compute (`tiles_skipped`).
-- Inside a `cfg_qrows > 4` block, the `G = cfg_qrows / 4` row groups share each K/V tile. The controller issues one K
-  and one V DMA per `kj` and then runs one tile for each group that is not masked for that `kj` (group `g` skips
-  `kj > g` when causal). Each group uses its own `m, l, O` state; `attn_tile` gets an extra index and its state
-  arrays become `G`-deep.
-- After the last `kj`, the block normalizes and writes `O` out: `G·4` rows of 4 int16 values, one DMA write of
-  `G·8` bytes per row group.
+N = 32, non-causal (`traffic.py`):
 
-### 9.4 Controller states
+| `cfg_qrows` | HBM bytes | vs NAIVE (12 672 B) |
+|---|---|---|
+| 4 | 2 432 | 5.2× |
+| 8 | 1 408 | 9.0× |
+| 16 | 896 | 14.1× |
+| 32 | 640 | 19.8× |
 
-`IDLE → LOAD_Q → LOAD_KV → TILE → NEXT_KJ → (NORMALIZE → STORE_O → NEXT_QBLOCK) → DONE`
+### 9.5 Not in Phase 4
 
-With overlap: `TILE` and `LOAD_KV` run in parallel and `NEXT_KJ` waits on both. `tiles_skipped` and `kv_loads` are
-counted as the controller takes each branch.
-
-### 9.5 Bookkeeping that the traffic model must match
-
-HBM bytes per block, with `G` row groups and `T_b` = number of tiles computed for the block:
-
-- Q: `4 · G · 4` bytes (int8). K and V: `2 · 4 · 4` bytes per `kj` requested. Output: `G · 4 · 4 · 2` bytes (int16).
-- `kv_tile_loads(n, causal, cfg_qrows)` in `traffic.py` gives the number of K/V tile loads, which is exactly the
-  number of `kj` values requested. The RTL counters must equal `traffic.py` for every `(N, causal, cfg_qrows)`.
-
-### 9.6 SRAM sizing for `cfg_qrows = 32`
-
-| Buffer | Size |
-|---|---|
-| Q rows (8 row groups × 4 rows × 4 int8) | 128 B |
-| K, V tiles ×2 (ping-pong), int8 | 4 × 16 B = 64 B |
-| `m`, `l` per row | 32 × (16 + 18) bit ≈ 139 B |
-| `O` (32 rows × 4 × 26 bit) | ≈ 416 B |
-| Output staging (32 rows × 4 × int16) | 256 B |
-
-Total under 1 KiB of on-chip state for the full 32-row block, which fits iCE40/ECP5 BRAM with room to spare.
-
-### 9.7 Open until Phase 4 RTL
-
-- The timing numbers above are a design target; the RTL test pins the measured cycle counts.
-- The Phase 5 overlap timing is a model, not yet measured.
+- `cfg_overlap_en` (DMA of the next K/V tile during compute) is Phase 5. The schedule above has no overlap, so the
+  numbers in 9.3 are the Phase 4 baseline that Phase 5 will be measured against.
+- NAIVE mode is Phase 5.
+- The HBM model has no bandwidth limit beyond one word per cycle, and writes are not latency-modelled.

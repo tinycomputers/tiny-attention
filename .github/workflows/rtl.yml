@@ -56,9 +56,15 @@ jobs:
           verilator --lint-only -Wall --top-module counter rtl/spike/counter.sv
           bash sim/lint.sh
 
-      # One SIM_BUILD per suite and parameter set; exp2/recip are exhaustive. About 2 minutes.
+      # One SIM_BUILD per suite and parameter set; exp2/recip are exhaustive. About 3 minutes.
       - name: cocotb unit suites
         run: bash sim/run_unit.sh
+
+      # Full engine: 200 seeds x N x causal, bit-exact O, HBM bytes, tiles, K/V loads and the cycle model.
+      - name: cocotb end-to-end (200 seeds)
+        run: bash sim/run_e2e.sh
+        env:
+          SEEDS: '200'
 
       # Each suite gets its own SIM_BUILD: cocotb does not detect a TOPLEVEL change
       # across runs sharing one sim_build/ and reuses the stale binary.
