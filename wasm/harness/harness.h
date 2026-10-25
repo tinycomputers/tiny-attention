@@ -23,6 +23,20 @@ struct Snapshot {
     uint32_t kvLoads;
 };
 
+// Tile-core state of the most recent tile (see attn_tile.sv dbg_* ports). S, Z, P, m, l, alpha and O are for the
+// group of that tile: 4 rows (S/Z/P: 4 x 4 lanes, O: 4 x 4 columns). Values are signed or unsigned as in the RTL.
+struct TileState {
+    int curGrp;
+    int srow;
+    std::vector<int32_t> s;      // 16, S_W = 17 bit signed
+    std::vector<int32_t> z;      // 16, Q8.8 signed
+    std::vector<int32_t> p;      // 16, UQ1.8 (0..256)
+    std::vector<int32_t> alpha;  // 4, UQ1.15
+    std::vector<int32_t> m;      // 4, Q8.8 signed
+    std::vector<int32_t> l;      // 4, 18 bit unsigned
+    std::vector<int32_t> o;      // 16, 26 bit signed
+};
+
 class TinyAttnSim {
 public:
     TinyAttnSim();
@@ -47,6 +61,9 @@ public:
     std::vector<uint32_t> readHbm(int addr, int len);
     Snapshot snapshot() const;
     bool isDone() const;
+    TileState getTile() const;
+    // P tiles written by a NAIVE run (HBM words 768..): n x n probabilities (UQ1.8), row-major. Requires n known.
+    std::vector<int32_t> readProbabilities();
 
 private:
     void clockEdge();
@@ -56,5 +73,6 @@ private:
     Vtiny_attn_top* top_;
     int n_ = 4;
     int qrows_ = 4;
+    bool causal_ = false;
     uint32_t cycle_ = 0;
 };

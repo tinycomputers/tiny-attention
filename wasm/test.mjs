@@ -11,8 +11,9 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const { default: createTinyAttn } = await import(join(root, "web/public/tiny_attn.mjs"));
 const mod = await createTinyAttn();
 
+// engine runs only; quantize_cases.json holds quantization references for the web tests
 const fixtures = readdirSync(join(root, "wasm/fixtures"))
-  .filter((f) => f.endsWith(".json"))
+  .filter((f) => f.endsWith(".json") && !f.startsWith("quantize_"))
   .sort()
   .map((f) => JSON.parse(readFileSync(join(root, "wasm/fixtures", f), "utf8")));
 
@@ -58,6 +59,24 @@ for (const { fx, sim, last, finished } of sims) {
   check(last.tiles === fx.tiles, `tiles ${last.tiles} != ${fx.tiles}`);
   check(last.kvLoads === fx.kvLoads, `K/V loads ${last.kvLoads} != ${fx.kvLoads}`);
   check(last.cycles === fx.cycles, `busy cycles ${last.cycles} != ${fx.cycles}`);
+  if (fx.lastTile) {
+    // tile state of the last computed tile, against the golden trace entry for that tile
+    const t = sim.getTile();
+    const G = fx.qrows / 4;
+    const lt = fx.lastTile;
+    check(t.curGrp === lt.qi - Math.floor(lt.qi / G) * G, `tile group ${t.curGrp}`);
+    check(JSON.stringify(t.m) === JSON.stringify(lt.m), `tile m ${t.m} != ${lt.m}`);
+    check(JSON.stringify(t.l) === JSON.stringify(lt.l), `tile l ${t.l} != ${lt.l}`);
+    check(JSON.stringify(t.alpha) === JSON.stringify(lt.alpha), `tile alpha ${t.alpha} != ${lt.alpha}`);
+    check(JSON.stringify(t.o) === JSON.stringify(lt.o), "tile O differs from golden");
+    console.log(`  last tile (qi=${lt.qi}, kj=${lt.kj}) state checked`);
+  }
+  if (fx.probs) {
+    const probs = Array.from(sim.readProbabilities());
+    const badP = probs.findIndex((v, i) => v !== fx.probs[i]);
+    check(badP < 0, `probability ${badP} differs: expected ${fx.probs[badP]}, got ${probs[badP]}`);
+    console.log(`  probabilities (${fx.n}x${fx.n}) checked`);
+  }
   console.log(`  cycles ${last.cycles}  read ${last.hbmRdBytes} B  write ${last.hbmWrBytes} B  tiles ${last.tiles}`);
   sim.delete();
 }

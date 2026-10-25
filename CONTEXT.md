@@ -33,7 +33,17 @@ On a fresh machine delete the symlinks and run `.tools/setup.sh` and `.tools/ems
   pass; perf baseline in `sim/perf_baseline.json` (re-record with `PERF_RECORD=1 COCOTB_TEST_FILTER=perf_grid bash sim/run_e2e.sh`).
 - Phase 6 (WASM harness): DONE. `wasm/build.sh` builds `web/public/tiny_attn.{mjs,wasm}` (81 KB gzipped); `node wasm/test.mjs`
   checks three golden fixtures on interleaved instances, exactly. JS API in `docs/STATE_SCHEMA.md`.
-- Next: Phase 7 (web UI). First: wide-signal access so the per-clock state carries per-PE values and softmax lanes.
+- Phase 7 (web visualizer `/app`): PARTIAL. Built: presets and quantization shared with the golden model, schedule, tile values,
+  bytes, NAIVE probability matrix. Browser-checked on the production build. Missing from the plan: MatrixEditor, SramPanel,
+  HbmMeter, FLASH heatmap, Playwright smoke test (see ARCHITECTURE §12).
+- Next: finish the Phase 7 list, then Phase 8 (L1, L2, L4).
+
+## Gotchas found in Phase 7
+- `wasm/fixtures/` holds engine runs and `quantize_cases.json`; the Node test must skip the quantization file (it did not for
+  a while and aborted in configure with no useful message).
+- Embind gives 64-bit integers to JavaScript as BigInt, which breaks JSON comparison. Tile values are 32-bit for that reason.
+- The tile core's debug S/Z/P registers are only written by FLASH. NAIVE views must not show them.
+- `astro dev` hung without output in this environment; `astro build` + `astro preview` works for browser checks.
 
 ## Gotchas found in Phase 5
 - The NAIVE tile operations reuse the online-softmax unit: OP_NM uses its m path, OP_NP uses its P and l path with alpha = 1

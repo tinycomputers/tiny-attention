@@ -40,6 +40,14 @@ export default [
     },
   },
   {
+    files: ["**/*.test.ts"],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
     files: ["scripts/**/*.mjs", "scripts/**/*.js"],
     languageOptions: {
       globals: {

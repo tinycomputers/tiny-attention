@@ -267,3 +267,13 @@ def test_wasm_fixtures_fresh():
     for c in ef.CASES:
         path = ef.OUT / f"{c['name']}.json"
         assert path.read_text() == ef.fixture_text(c), f"{path.name} is stale: run sim/golden/export_fixtures.py"
+
+
+def test_web_data_fresh():
+    """web/src/lib/presets.ts and wasm/fixtures/quantize_cases.json must match the generator."""
+    import json
+
+    import export_web_data as ewd
+
+    assert ewd.WEB_PRESETS.read_text() == ewd.presets_ts(ewd.preset_entries()), "presets.ts is stale"
+    assert ewd.QUANT_CASES.read_text() == json.dumps(ewd.quant_cases()) + "\n", "quantize_cases.json is stale"

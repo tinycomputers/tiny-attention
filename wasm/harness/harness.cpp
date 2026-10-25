@@ -3,6 +3,31 @@
 #include <stdexcept>
 
 namespace {
+// Bit extraction from Verilator's word storage (wide ports are arrays of 32-bit words).
+template <class W>
+const uint32_t* wordsOf(const W& w) {
+    return &w[0];
+}
+inline const uint32_t* wordsOf(const uint64_t& v, uint32_t* tmp) {
+    tmp[0] = static_cast<uint32_t>(v);
+    tmp[1] = static_cast<uint32_t>(v >> 32);
+    return tmp;
+}
+uint64_t bitsAt(const uint32_t* words, int lsb, int width) {
+    uint64_t v = 0;
+    for (int b = 0; b < width; ++b) {
+        int bit = lsb + b;
+        if ((words[bit >> 5] >> (bit & 31)) & 1u) v |= 1ull << b;
+    }
+    return v;
+}
+int64_t signExtend(uint64_t v, int width) {
+    if (width < 64 && ((v >> (width - 1)) & 1u)) return static_cast<int64_t>(v) - (1ll << width);
+    return static_cast<int64_t>(v);
+}
+}  // namespace
+
+namespace {
 // HBM layout (rtl/tiny_attn_pkg.sv)
 constexpr uint32_t Q_BASE = 0, K_BASE = 32, V_BASE = 64, O_BASE = 96;
 }  // namespace
@@ -59,6 +84,7 @@ void TinyAttnSim::configure(int n, int qrows, bool causal, int mode, bool overla
     if (scale >= (1u << 24)) throw std::invalid_argument("scale must fit 24 bits");
     n_ = n;
     qrows_ = qrows;
+    causal_ = causal;
     top_->cfg_nb = static_cast<uint8_t>(n / 4);
     top_->cfg_gg = static_cast<uint8_t>(qrows / 4);
     top_->cfg_causal = causal ? 1 : 0;
@@ -152,4 +178,54 @@ std::vector<uint32_t> TinyAttnSim::readHbm(int addr, int len) {
         words.push_back(top_->o_rd_word);
     }
     return words;
+}
+
+TileState TinyAttnSim::getTile() const {
+    TileState t;
+    t.curGrp = top_->dbg_cur_grp;
+    t.srow = top_->dbg_srow;
+    uint32_t tmp[2];
+    const uint32_t* sw = wordsOf(top_->dbg_s_tile);
+    const uint32_t* zw = wordsOf(top_->dbg_z_tile);
+    const uint32_t* pw = wordsOf(top_->dbg_p_tile);
+    const uint32_t* aw = wordsOf(top_->dbg_alpha, tmp);
+    uint32_t tmp2[2];
+    const uint32_t* mw = wordsOf(top_->dbg_m, tmp2);
+    const uint32_t* lw = wordsOf(top_->dbg_l);
+    const uint32_t* ow = wordsOf(top_->dbg_o);
+    for (int i = 0; i < 16; ++i) {
+        t.s.push_back(static_cast<int32_t>(signExtend(bitsAt(sw, i * 17, 17), 17)));
+        t.z.push_back(static_cast<int32_t>(signExtend(bitsAt(zw, i * 16, 16), 16)));
+        t.p.push_back(static_cast<int32_t>(static_cast<int64_t>(bitsAt(pw, i * 9, 9))));
+        t.o.push_back(static_cast<int32_t>(signExtend(bitsAt(ow, i * 26, 26), 26)));
+    }
+    for (int i = 0; i < 4; ++i) {
+        t.alpha.push_back(static_cast<int32_t>(static_cast<int64_t>(bitsAt(aw, i * 16, 16))));
+        t.m.push_back(static_cast<int32_t>(signExtend(bitsAt(mw, i * 16, 16), 16)));
+        t.l.push_back(static_cast<int32_t>(static_cast<int64_t>(bitsAt(lw, i * 18, 18))));
+    }
+    return t;
+}
+
+std::vector<int32_t> TinyAttnSim::readProbabilities() {
+    const int nb = n_ / 4;
+    std::vector<int32_t> p(static_cast<size_t>(n_) * n_, 0);
+    for (int qi = 0; qi < nb; ++qi) {
+        for (int kj = 0; kj < nb; ++kj) {
+            // Z tile at 256 + 64*qi + 8*kj, P tile at 768 + ...: 8 words, two 16-bit lanes per word
+            const int base = 768 + 64 * qi + 8 * kj;
+            if (causal_ && kj > qi) continue;  // never computed: stays zero
+            for (int r = 0; r < 4; ++r) {
+                for (int c = 0; c < 4; ++c) {
+                    int word = base + 2 * r + c / 2;
+                    top_->o_rd_addr = word;
+                    evalComb();
+                    uint32_t w = top_->o_rd_word;
+                    int32_t v = static_cast<int32_t>((w >> (16 * (c % 2))) & 0xFFFFu);
+                    p[static_cast<size_t>(qi * 4 + r) * n_ + kj * 4 + c] = v;
+                }
+            }
+        }
+    }
+    return p;
 }

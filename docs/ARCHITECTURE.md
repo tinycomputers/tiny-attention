@@ -355,3 +355,27 @@ masking. A fresh instance reproduces the run, so no state leaks between instance
 
 Deviation from the plan: the per-clock state exported to JavaScript is a subset (controller state, counters, byte counts).
 Per-PE values, softmax lanes and SRAM tiles need wide-signal access and are the first item of Phase 7.
+
+## 12. Phase 7: web visualizer (as built)
+
+`/app` (`web/src/pages/app.astro`) runs the WASM engine in the browser and shows it clock by clock.
+
+- **Presets** (`sim/golden/presets.py` → `web/src/lib/presets.ts`, generated): six attention patterns with token labels.
+  Their Q/K/V are quantized in the browser by `web/src/lib/quantize.ts`, a mirror of `fixed.quantize`. Both are checked
+  against golden values in `pytest` (freshness) and `vitest` (values).
+- **Controls**: schedule (FLASH / NAIVE), causal, overlap (FLASH), `cfg_qrows`, HBM latency. Start, Step, Back (rebuilds
+  the run from reset and advances N−1 clocks), Run to end, Reset.
+- **Views**: the tile schedule (FLASH: row groups × K/V tiles, with the causal mask; NAIVE: pass-1 Z tiles), the current
+  tile's S, Z, P, m, l, α and O (FLASH; NAIVE shows m, l and O only, since its S/Z/P never enter the tile core), HBM bytes,
+  tile count, K/V loads, and controller state names (`FLASH_STATES` / `NAIVE_STATES`, matching the enums in the RTL).
+- **Result**: the dequantized O, its maximum deviation from float attention (`web/src/lib/reference.ts`), and for NAIVE the
+  probability matrix read back from HBM, with token labels.
+
+Checks: `node wasm/test.mjs` (engine vs golden), `pnpm test` (quantization and tile order against the fixtures),
+`pnpm typecheck`, `pnpm lint`, `pnpm build`. The browser run (built site, `astro preview`) showed no console errors; the
+FLASH run and the NAIVE run both finished with max deviation 0.0049 on the toy preset; the phone width has no horizontal scroll.
+
+Not yet built from the Phase 7 list in `docs/PLAN.md`: `MatrixEditor` (edit Q/K/V in the page; presets only for now),
+`SramPanel` (staging buffer contents), an `HbmMeter` bar, a FLASH attention heatmap (only NAIVE shows P), and the Playwright
+smoke test. The dev-server path also needs a fix (`astro dev` hung without output in this environment); `astro build` +
+`astro preview` works. The light/dark theme and 375 px checks are done for layout only; the theme check is not.

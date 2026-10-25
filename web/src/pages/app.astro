@@ -1,0 +1,17 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import Visualizer from "@/components/Visualizer";
+---
+
+<Layout title="TinyAttention visualizer">
+  <main class="mx-auto max-w-5xl px-4 py-10">
+    <h1 class="text-2xl font-bold">TinyAttention visualizer</h1>
+    <p class="mt-2 text-sm" style="color: var(--muted)">
+      Every number here is read from the compiled RTL, running in your browser. Pick a preset, press Start, then Step
+      through the clock.
+    </p>
+    <div class="mt-6">
+      <Visualizer client:only="react" />
+    </div>
+  </main>
+</Layout>
