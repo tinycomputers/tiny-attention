@@ -136,7 +136,134 @@ Verification of this phase: `bash sim/lint.sh` (`-Wall`, every top, MM2 paramete
 exp2 exhaustive, recip exhaustive over every mantissa). A deliberate bug in the reciprocal Newton step or in the
 engine's deskew delay makes the suites fail.
 
-## 8. Open until Phase 4
+## 8. Phase 3: the tile core (`attn_tile`)
 
-- Controller timing diagram for synchronous SRAM + HBM latency (written before the controller RTL).
-- SRAM sizing for `cfg_qrows = 32`: `m, l` 32 entries each, `O` 32 × 4 × 26 bit ≈ 400 B, plus 32 Q rows.
+One 4-row Q block against a sequence of 4×4 K/V tiles, with no memory system yet. The testbench loads Q, Kᵀ and V
+rows through ports; Phase 4's controller and DMA replace the testbench.
+
+| Module | Contract |
+|---|---|
+| `online_softmax` | one row, combinational: `m_new, α, P[4], l_new` from `z[4], m_old, l_old`. Equals `fixed.online_softmax_step`. |
+| `o_accumulator` | one row, 4 columns: `((O·α) >>> 15) + (PV <<< 4)`. Equals `fixed.o_update`. |
+| `normalize` | one element: `(o·r + 2^(7+k)) >>> (8+k)`, clipped to int16. Equals `fixed.normalize`. |
+| `attn_tile` | MM1 (A = Q rows, W = Kᵀ) → 4 `scale_mask` lanes → `online_softmax` → MM2 (A = P rows, W = V) → `o_accumulator`; after `tile_last`, one shared `recip_unit` and 4 `normalize` lanes emit the 4 output rows. |
+
+**Tile schedule** (pinned in `test_attn_tile.py`; c0 = first cycle after `tile_start`):
+
+| Cycle | Event |
+|---|---|
+| c0 … c0+3 | Q rows enter MM1 |
+| c0+7 … c0+10 | S rows leave MM1; softmax stage runs on each, `m, l, α` registered |
+| c0+8 … c0+11 | P rows enter MM2 (registered one cycle after the softmax stage) |
+| c0+15 … c0+18 | PV rows leave MM2; `O` row updated |
+| c0+19 | `tile_done` (the `dbg_*` tile values are valid) |
+
+`tile_start` to `tile_done` is **20 cycles**, plus 4 cycles to load the weights, with no overlap between tiles.
+Overlapping weight load and the next tile's MM1 with the current tile's MM2 is the Phase 5 `cfg_overlap_en`
+feature; the 4-cycle weight load is the other thing it hides.
+
+**Weight layout.** MM1 weights are Kᵀ, i.e. row r of Kᵀ is column r of the K tile; the SRAM read in Phase 4 is a strided
+read. MM2 weights are the V tile rows as they are.
+
+**Diagonal tile.** `tile_diag` makes lane j masked for softmax row i when `j > i`, which is the causal mask inside the
+tile on the diagonal. Tiles above the diagonal are skipped by the controller and never reach this module.
+
+**Debug ports** (each is a real register or wire, and they are what the visualizer's `CycleState` will carry):
+`dbg_s_tile, dbg_z_tile, dbg_p_tile, dbg_alpha, dbg_m, dbg_l, dbg_o, dbg_srow`, and the weight, activation and partial-sum
+state of every PE in both arrays (`dbg_mm1_*`, `dbg_mm2_*`).
+
+**Verification.** `test_attn_tile.py` compares S, Z, P, α, m, l and O at every tile boundary and the normalized rows against
+`fixed.flash(trace=True)`: 36 random blocks (N ∈ {4,8,16,32}, causal on and off, random `qi`, four input amplitudes),
+corner cases (all logits equal with V = ±127, max |S|, saturating `cfg_scale`, near-zero `cfg_scale`, one-hot
+attention, first causal row), and five Q blocks back to back to prove `blk_clear`. A wrong causal-mask boundary or
+feeding the wrong row's α into the O update makes it fail with a diff naming the tile and the value.
+
+## 9. Phase 4: memory system and FLASH controller (design, written before RTL)
+
+### 9.1 Memory model
+
+- **HBM model** (`hbm_model.sv`): word-addressed, 4-byte words holding four int8 values (or 2 int16 / 1 int32 for Z, O).
+  A read request returns data `cfg_hbm_latency` cycles later through a delay pipeline (1 word/cycle throughput, so a
+  burst of W words finishes at `latency + W` cycles). Byte counters `hbm_rd_bytes` and `hbm_wr_bytes` count payload
+  bytes only.
+- **SRAM** (`sram_bank.sv`): synchronous read, 1-cycle latency, one read and one write port. Buffers: `Q` (4 rows),
+  `K` ×2 and `V` ×2 (ping-pong when `cfg_overlap_en`, otherwise only buffer 0 is used), `Z` and `P` (NAIVE only),
+  `O` (4 rows, Q8.8 output staging).
+- **DMA** (`dma.sv`): one request at a time. It moves a tile between HBM and an SRAM buffer, one word per cycle after
+  the latency. K tiles are read row-major; the MM1 weight load needs Kᵀ, so the DMA loads K rows and the engine reads
+  column-major in the 4-cycle weight load (no transpose buffer).
+
+### 9.2 Controller timing: one FLASH block with `cfg_qrows = 4`, latency L
+
+Times are in cycles from the start of the block. `L = cfg_hbm_latency`. Each transfer below is one request; the
+controller issues the next request only when the previous one has finished (no request queueing in v1).
+
+```
+cycle        0            L+4         L+8            ...   
+Q DMA        |-- Q tile 4 words (L+4 cycles) --|
+               (idle while Q is in flight)
+
+for kj = 0 .. last:
+  K DMA      |------ K tile, 4 words: L+4 ------|
+  V DMA                                          |------ V tile: L+4 ------|
+  weight load                                                                |4|
+  tile       tile_start ........... tile_done (20 cycles)
+             |<-------- 24 + L+4+L+4 cycles per tile (no overlap) -------->|
+```
+
+Without overlap, one K/V tile costs `2·(L+4) + 4 + 20 = 2L + 32` cycles. With `cfg_overlap_en`, the DMA for tile
+`kj+1` (K then V, `2·(L+4)` cycles) runs while tile `kj` computes (weight load + 20 cycles). Steady state is then
+`max(2L + 8, 24)` cycles per tile:
+
+```
+tile kj:     [wload 4][ compute 20 ]
+DMA kj+1:    [ K   L+4 ][ V  L+4 ]          overlapped with tile kj compute
+             steady state: period = max(2(L+4), 24)
+```
+
+Ping-pong rule: buffer `kj mod 2` holds the tile under compute; the DMA writes buffer `(kj+1) mod 2`. The DMA never
+writes the buffer the engine is reading, so no hazard checks are needed.
+
+### 9.3 Causal and block control
+
+- Q block `qi` (of `cfg_qrows` rows): load its Q rows, then loop `kj` over `0 .. last`, where
+  `last = qi` when causal and `N/4 − 1` otherwise. Tiles above the block's diagonal are never requested, so they cost
+  no DMA and no compute (`tiles_skipped`).
+- Inside a `cfg_qrows > 4` block, the `G = cfg_qrows / 4` row groups share each K/V tile. The controller issues one K
+  and one V DMA per `kj` and then runs one tile for each group that is not masked for that `kj` (group `g` skips
+  `kj > g` when causal). Each group uses its own `m, l, O` state; `attn_tile` gets an extra index and its state
+  arrays become `G`-deep.
+- After the last `kj`, the block normalizes and writes `O` out: `G·4` rows of 4 int16 values, one DMA write of
+  `G·8` bytes per row group.
+
+### 9.4 Controller states
+
+`IDLE → LOAD_Q → LOAD_KV → TILE → NEXT_KJ → (NORMALIZE → STORE_O → NEXT_QBLOCK) → DONE`
+
+With overlap: `TILE` and `LOAD_KV` run in parallel and `NEXT_KJ` waits on both. `tiles_skipped` and `kv_loads` are
+counted as the controller takes each branch.
+
+### 9.5 Bookkeeping that the traffic model must match
+
+HBM bytes per block, with `G` row groups and `T_b` = number of tiles computed for the block:
+
+- Q: `4 · G · 4` bytes (int8). K and V: `2 · 4 · 4` bytes per `kj` requested. Output: `G · 4 · 4 · 2` bytes (int16).
+- `kv_tile_loads(n, causal, cfg_qrows)` in `traffic.py` gives the number of K/V tile loads, which is exactly the
+  number of `kj` values requested. The RTL counters must equal `traffic.py` for every `(N, causal, cfg_qrows)`.
+
+### 9.6 SRAM sizing for `cfg_qrows = 32`
+
+| Buffer | Size |
+|---|---|
+| Q rows (8 row groups × 4 rows × 4 int8) | 128 B |
+| K, V tiles ×2 (ping-pong), int8 | 4 × 16 B = 64 B |
+| `m`, `l` per row | 32 × (16 + 18) bit ≈ 139 B |
+| `O` (32 rows × 4 × 26 bit) | ≈ 416 B |
+| Output staging (32 rows × 4 × int16) | 256 B |
+
+Total under 1 KiB of on-chip state for the full 32-row block, which fits iCE40/ECP5 BRAM with room to spare.
+
+### 9.7 Open until Phase 4 RTL
+
+- The timing numbers above are a design target; the RTL test pins the measured cycle counts.
+- The Phase 5 overlap timing is a model, not yet measured.

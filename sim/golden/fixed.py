@@ -142,6 +142,26 @@ def _acc(x, alpha, fmt):
     return (prod + (1 << 14)) >> 15 if fmt.acc_round else prod >> 15
 
 
+def online_softmax_step(z, m, l, fmt: Fmt = DEFAULT):
+    """One tile step of the online softmax for R rows. z: R x 4 Q8.8 (masked = MASK), m: R, l: R.
+    Returns (m_new, alpha, p, l_new). This is exactly the RTL `online_softmax` module, vectorized over rows."""
+    z = np.asarray(z, dtype=np.int64)
+    valid = z != MASK
+    m_new = np.maximum(m, z.max(axis=1))
+    alpha = exp2_q(m - m_new, fmt)  # UQ1.15
+    e = exp2_q(np.where(valid, z - m_new[:, None], 0), fmt)
+    p = np.where(valid, p_from_exp(e, fmt), 0)  # UQ1.pf
+    l_new = _acc(l, alpha, fmt) + (p.sum(axis=1) << fmt.lf)
+    return m_new, alpha, p, l_new
+
+
+def o_update(o, alpha, pv, fmt: Fmt = DEFAULT):
+    """O = (O * alpha) >> 15 + (P.V << OF) for R rows. o: R x 4, alpha: R, pv: R x 4. RTL `o_accumulator`."""
+    return _acc(np.asarray(o, dtype=np.int64), np.asarray(alpha, dtype=np.int64)[:, None], fmt) + (
+        np.asarray(pv, dtype=np.int64) << fmt.of
+    )
+
+
 # ---------------------------------------------------------------- schedules
 @dataclass
 class Traffic:
@@ -210,13 +230,8 @@ def flash(qz: Quantized, n: int, causal: bool = False, fmt: Fmt = DEFAULT, trace
                 valid = _valid(qi, kj, causal)
                 s = mm(qt, kt.T)  # MM1
                 z = scale_mask(s, qz.cfg_scale, valid, fmt)
-                m_new = np.maximum(m, z.max(axis=1))
-                alpha = exp2_q(m - m_new, fmt)  # UQ1.15
-                e = exp2_q(np.where(valid, z - m_new[:, None], 0), fmt)
-                p = np.where(valid, p_from_exp(e, fmt), 0)  # UQ1.pf
-                l = _acc(l, alpha, fmt) + (p.sum(axis=1) << fmt.lf)
-                o = _acc(o, alpha[:, None], fmt) + (mm(p, vt) << fmt.of)  # MM2
-                m = m_new
+                m, alpha, p, l = online_softmax_step(z, m, l, fmt)
+                o = o_update(o, alpha, mm(p, vt), fmt)  # MM2
                 state[qi] = (m, l, o)
                 if trace:
                     log.append(dict(qi=qi, kj=kj, S=s, Z=z, m=m.copy(), alpha=alpha, P=p, l=l.copy(), O=o.copy()))

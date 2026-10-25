@@ -17,11 +17,20 @@ running max, rescale factor, SRAM tile and HBM byte comes from a `dbg_*` port on
   Formats and rounding frozen in `docs/ARCHITECTURE.md`; the study that chose them is `docs/NUMERICS.md`.
 - Phase 2 (RTL arithmetic blocks): DONE. `pe, systolic_array, mm_engine, row_max, scale_mask, exp2_unit, recip_unit`,
   `-Wall` clean (`bash sim/lint.sh`), all cocotb suites green (`bash sim/run_unit.sh`, ~2 min).
-- Next: Phase 3 (one tile end to end: online_softmax, o_accumulator, normalize, tile-level top, tile lockstep vs `fixed.flash(trace=True)`).
+- Phase 3 (one tile end to end): DONE. `online_softmax, o_accumulator, normalize, attn_tile` (MM1 -> softmax -> MM2 -> O,
+  then normalize); lockstep vs `fixed.flash(trace=True)` at every tile boundary; tile = 20 cycles `tile_start` -> `tile_done`.
+- Next: Phase 4 (memory system + FLASH controller: sram_bank, hbm_model, dma, controller, perf_counters, tiny_attn_top).
+  Write the controller timing diagram in docs/ARCHITECTURE.md BEFORE the RTL.
 
 ## Local toolchain note
 `.tools/verilator-install` and `.tools/emsdk` are symlinks to tiny-cpu's builds (gitignored) to avoid recompiling.
 On a fresh machine delete the symlinks and run `.tools/setup.sh` and `.tools/emsdk.sh` instead.
+
+## Gotchas found in Phase 3
+- `fixed.flash` calls `online_softmax_step` and `o_update`; the RTL modules are tested against those same functions, so the
+  golden has no duplicate arithmetic to drift.
+- `attn_tile` has no overlap yet: weights load (4 cycles) then 20 cycles per tile. Do not add overlap before the controller exists.
+- The tile core takes K as Kᵀ rows (a strided SRAM read in Phase 4) and V as plain rows.
 
 ## Gotchas found in Phase 2
 - cocotb: pass Verilator `-G` parameter overrides via `EXTRA_ARGS`. A command-line `COMPILE_ARGS=...` replaces cocotb's own

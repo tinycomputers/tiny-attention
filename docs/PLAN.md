@@ -427,7 +427,7 @@ The estimates assume one person part-time, at tiny-cpu's pace.
   `scale_mask`, each with its unit test (§5 layer 1, exhaustive where stated).
 - **Exit:** `verilator --lint-only -Wall` is clean; every unit test passes; `exp2` and `recip` are exhaustively bit-exact.
 
-### Phase 3: One tile, end to end (1.5 weeks)
+### Phase 3: One tile, end to end (1.5 weeks) ✅ DONE
 - `online_softmax`, `o_accumulator`, `normalize`, plus a tile-level top fed directly by the testbench
   (no memory system yet): one Q block streams through several KV blocks.
 - **Exit:** `test_tile_lockstep.py` is green for N = 4…32 on a single Q block; the waveform shows MM1 → softmax → MM2.

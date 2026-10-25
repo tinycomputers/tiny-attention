@@ -4,7 +4,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 SRC="$PWD/../rtl/lut_pkg.sv $PWD/../rtl/tiny_attn_pkg.sv $PWD/../rtl/pe.sv $PWD/../rtl/systolic_array.sv \
-$PWD/../rtl/mm_engine.sv $PWD/../rtl/row_max.sv $PWD/../rtl/scale_mask.sv $PWD/../rtl/exp2_unit.sv $PWD/../rtl/recip_unit.sv"
+$PWD/../rtl/mm_engine.sv $PWD/../rtl/row_max.sv $PWD/../rtl/scale_mask.sv $PWD/../rtl/exp2_unit.sv $PWD/../rtl/recip_unit.sv \
+$PWD/../rtl/online_softmax.sv $PWD/../rtl/o_accumulator.sv $PWD/../rtl/normalize.sv $PWD/../rtl/attn_tile.sv"
 MM2="-GA_W=9 -GA_SIGNED=0 -GACC_W=18"
 
 run() {  # name  toplevel  module  [compile args]  (env A_W/A_SIGNED/ACC_W inherited)
@@ -33,4 +34,8 @@ run row_max           row_max        test_row_max
 run scale_mask        scale_mask     test_scale_mask
 run exp2              exp2_unit      test_exp2
 run recip             recip_unit     test_recip
+run online_softmax    online_softmax test_online_softmax
+run o_accumulator     o_accumulator  test_o_accumulator
+run normalize         normalize      test_normalize
+run attn_tile         attn_tile      test_attn_tile
 echo "ALL UNIT SUITES PASSED"
