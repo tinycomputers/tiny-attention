@@ -339,3 +339,19 @@ Deviations from the first plan, recorded here so they are not forgotten:
 - NAIVE runs block by block, not pass by pass over all blocks. Values and traffic totals are identical (the
   per-row computations are independent), but the sequencing differs from `fixed.naive`'s loop order.
 - Overlap applies to FLASH only. NAIVE is sequential.
+
+## 11. Phase 6: WebAssembly harness
+
+- `wasm/harness/harness.{h,cpp}`: `TinyAttnSim`, one instance of `tiny_attn_top` with its own `VerilatedContext`. Drives
+  the engine as a host would: load Q/K/V through the HBM load port, one-cycle start, read O through the readback port.
+- `wasm/harness/bindings.cpp`: embind bindings. The JavaScript API and the per-clock snapshot are in `docs/STATE_SCHEMA.md`.
+- `wasm/build.sh`: Verilator `--prefix Vtiny_attn_top`, `-O3`, then `em++`. `-Wno-UNOPTFLAT` is needed for the
+  combinational paths through the staging buffer and the DMA word mux (no logic loop: the loop is through registers).
+- Size: 206 KB raw, 81 KB gzipped. The budget is 500 KB gzipped, enforced by `wasm.yml`.
+
+Results (`node wasm/test.mjs`, three golden fixtures interleaved on separate instances): O, HBM bytes, tiles, K/V loads and
+busy cycles equal the golden values for FLASH sequential, FLASH with overlap and causal masking, and NAIVE with causal
+masking. A fresh instance reproduces the run, so no state leaks between instances.
+
+Deviation from the plan: the per-clock state exported to JavaScript is a subset (controller state, counters, byte counts).
+Per-PE values, softmax lanes and SRAM tiles need wide-signal access and are the first item of Phase 7.

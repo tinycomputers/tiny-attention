@@ -443,7 +443,7 @@ The estimates assume one person part-time, at tiny-cpu's pace.
 - **Exit:** the whole random matrix (§5 layer 3) is green; `perf_baseline.json` is pinned; the accuracy test is green.
   *At this point the engine is fully verified hardware and worth publishing on its own.*
 
-### Phase 6: WASM harness (1 week)
+### Phase 6: WASM harness (1 week) ✅ DONE
 - `harness.cpp`, `bindings.cpp`, `build.sh`, `STATE_SCHEMA.md`, `test.mjs` with golden fixtures.
 - **Exit:** `wasm.yml` is green; the size budget is met; two instances run independently in Node.
 

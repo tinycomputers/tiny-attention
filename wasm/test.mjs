@@ -1,0 +1,82 @@
+// Headless test of the TinyAttn WebAssembly module against the golden fixtures (wasm/fixtures, exported by
+// sim/golden/export_fixtures.py). Two instances run side by side with their steps interleaved: any state shared
+// between instances would change an output or a cycle count. Per run it checks:
+//   O (every value) == golden, HBM bytes == traffic.py, tiles and K/V loads == traffic.py, busy cycles == fixture.
+// Usage: node wasm/test.mjs   (after bash wasm/build.sh)
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const { default: createTinyAttn } = await import(join(root, "web/public/tiny_attn.mjs"));
+const mod = await createTinyAttn();
+
+const fixtures = readdirSync(join(root, "wasm/fixtures"))
+  .filter((f) => f.endsWith(".json"))
+  .sort()
+  .map((f) => JSON.parse(readFileSync(join(root, "wasm/fixtures", f), "utf8")));
+
+let failures = 0;
+const check = (ok, msg) => {
+  if (!ok) {
+    failures++;
+    console.log(`  FAIL ${msg}`);
+  }
+};
+
+function load(fx) {
+  const sim = new mod.TinyAttnSim();
+  sim.configure(fx.n, fx.qrows, fx.causal, fx.mode === "NAIVE" ? 1 : 0, fx.overlap, fx.latency, fx.cfgScale);
+  sim.loadQKV(fx.q, fx.k, fx.v);
+  sim.start();
+  return sim;
+}
+
+// Run all fixtures together, one clock at a time, round-robin over the instances.
+const sims = fixtures.map((fx) => ({ fx, sim: load(fx), last: null, finished: false }));
+const maxCycles = 400_000;
+for (let t = 0; t < maxCycles && sims.some((s) => !s.finished); t++) {
+  for (const s of sims) {
+    if (s.finished) continue;
+    s.last = s.sim.step();
+    if (s.last.done) {
+      // the DONE cycle is counted by the busy-cycle counter at its end: one more edge makes the counters final
+      s.last = s.sim.step();
+      s.finished = true;
+    }
+  }
+}
+
+for (const { fx, sim, last, finished } of sims) {
+  console.log(`${fx.name} (${fx.mode} N=${fx.n} causal=${fx.causal} qrows=${fx.qrows} overlap=${fx.overlap} L=${fx.latency})`);
+  check(finished, "engine did not finish");
+  const out = Array.from(sim.readOutput());
+  const bad = out.findIndex((v, i) => v !== fx.out[i]);
+  check(bad < 0, `O differs at ${bad}: expected ${fx.out[bad]}, got ${out[bad]}`);
+  check(last.hbmRdBytes === fx.hbmRdBytes, `read bytes ${last.hbmRdBytes} != ${fx.hbmRdBytes}`);
+  check(last.hbmWrBytes === fx.hbmWrBytes, `write bytes ${last.hbmWrBytes} != ${fx.hbmWrBytes}`);
+  check(last.tiles === fx.tiles, `tiles ${last.tiles} != ${fx.tiles}`);
+  check(last.kvLoads === fx.kvLoads, `K/V loads ${last.kvLoads} != ${fx.kvLoads}`);
+  check(last.cycles === fx.cycles, `busy cycles ${last.cycles} != ${fx.cycles}`);
+  console.log(`  cycles ${last.cycles}  read ${last.hbmRdBytes} B  write ${last.hbmWrBytes} B  tiles ${last.tiles}`);
+  sim.delete();
+}
+
+// A fresh instance must reproduce the same run (no state left over from earlier instances).
+{
+  const fx = fixtures[0];
+  const sim = load(fx);
+  let snap;
+  for (let t = 0; t < maxCycles; t++) {
+    snap = sim.step();
+    if (snap.done) break;
+  }
+  snap = sim.step();
+  check(Array.from(sim.readOutput()).every((v, i) => v === fx.out[i]), "fresh instance output differs");
+  check(snap.cycles === fx.cycles, "fresh instance cycles differ");
+  sim.delete();
+  console.log(`fresh instance (${fx.name}): checked`);
+}
+
+console.log(failures === 0 ? "PASS" : `FAILED (${failures} checks)`);
+process.exit(failures === 0 ? 0 : 1);

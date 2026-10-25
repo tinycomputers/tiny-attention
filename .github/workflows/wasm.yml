@@ -53,3 +53,16 @@ jobs:
         run: |
           test -f web/public/spike/counter.wasm
           echo "spike wasm: $(du -h web/public/spike/counter.wasm | cut -f1)"
+
+      # The engine: Verilate tiny_attn_top, build the module, run the golden fixtures in Node, check the size budget.
+      - name: Build engine WASM
+        run: bash wasm/build.sh
+
+      - name: Engine golden fixtures (Node)
+        run: node wasm/test.mjs
+
+      - name: Size budget (500 KB gzipped)
+        run: |
+          GZ=$(gzip -9 -c web/public/tiny_attn.wasm | wc -c)
+          echo "engine wasm gzip: $GZ bytes"
+          test "$GZ" -le 512000
