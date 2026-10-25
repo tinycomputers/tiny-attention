@@ -313,3 +313,29 @@ Phase 5 pins measured busy cycles for a grid of `(N, causal, qrows, L, overlap, 
 The FLASH non-overlapped case stays exact against the closed-form model from Phase 4. The overlapped and NAIVE cases
 are regression baselines measured from the RTL. Each one is checked by `sim/test_perf.py`; a change fails the test and
 must be justified in review.
+
+### 10.5 Measured results (as built)
+
+From `sim/perf_baseline.json` (N = 32, non-causal, L = 10):
+
+| Configuration | Busy cycles | vs sequential FLASH |
+|---|---|---|
+| FLASH, `cfg_qrows = 4`, no overlap | 4113 | 1.00 |
+| FLASH, `cfg_qrows = 4`, overlap | 2937 | 0.71 |
+| FLASH, `cfg_qrows = 16`, no overlap | 2133 | 0.52 |
+| FLASH, `cfg_qrows = 16`, overlap | 1657 | 0.40 |
+| NAIVE | 10961 | 2.66 |
+
+Overlap saves about 29% at `cfg_qrows = 4` (the K/V loads are most of the time there) and about 22% at `cfg_qrows = 16`.
+Causal runs follow the same pattern (2433 → 1845 at `cfg_qrows = 4`). NAIVE is 2.7× slower than FLASH at this size. Phase 5 does not break that gap down by pass; the pass
+breakdown is a candidate for Phase 9 profiling.
+
+The FLASH sequential case equals the cycle model in `sim/golden/schedule.py` exactly. The overlap and NAIVE cases are
+pinned baselines; `test_e2e.py::perf_grid` also checks that overlap is never slower than sequential for the same
+configuration.
+
+Deviations from the first plan, recorded here so they are not forgotten:
+- HBM grew from 256 to 2048 words to hold the NAIVE Z and P tiles.
+- NAIVE runs block by block, not pass by pass over all blocks. Values and traffic totals are identical (the
+  per-row computations are independent), but the sequencing differs from `fixed.naive`'s loop order.
+- Overlap applies to FLASH only. NAIVE is sequential.

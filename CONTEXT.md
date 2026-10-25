@@ -28,7 +28,15 @@ On a fresh machine delete the symlinks and run `.tools/setup.sh` and `.tools/ems
 - Phase 4 (memory + FLASH controller + top): DONE. `sram_bank, hbm_model, dma, flash_ctrl, perf_counters, tiny_attn_top`
   and the 32-row attn_tile. End to end: bit-exact O, HBM bytes, tiles, K/V loads and busy cycles all equal the golden /
   closed-form models for every N, causal, cfg_qrows and latency tested (`SEEDS=200 bash sim/run_e2e.sh`).
-- Next: Phase 5 (cfg_overlap_en ping-pong K/V prefetch, NAIVE schedule, latency sweep, perf baseline pins).
+- Phase 5 (overlap, NAIVE, perf pins): DONE. `naive_ctrl` (4 passes, block-by-block), FLASH double-buffered K/V prefetch
+  (`cfg_overlap`), tile operations OP_NZ / OP_NM / OP_NP / OP_NPV, HBM 2048 words. Full e2e (200 seeds) and unit suites
+  pass; perf baseline in `sim/perf_baseline.json` (re-record with `PERF_RECORD=1 COCOTB_TEST_FILTER=perf_grid bash sim/run_e2e.sh`).
+- Next: Phase 6 (WASM harness: dual models, bindings, state schema, Node test against the golden fixtures).
+
+## Gotchas found in Phase 5
+- The NAIVE tile operations reuse the online-softmax unit: OP_NM uses its m path, OP_NP uses its P and l path with alpha = 1
+  (exp2(0) = 32768), OP_NPV uses o_accumulator with alpha forced to 32768. Golden equality holds, but that identity is the thing to re-check first if NAIVE ever breaks.
+- A wrong alpha in the NAIVE O update fails the e2e test (checked by injecting it).
 
 ## Gotchas found in Phase 4
 - Disk: the root filesystem was 100% full during Phase 4. The Bash tool writes its output to /tmp, so with no space every

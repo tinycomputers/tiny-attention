@@ -438,7 +438,7 @@ The estimates assume one person part-time, at tiny-cpu's pace.
 - Write the controller timing diagram in `ARCHITECTURE.md` **before** coding it.
 - **Exit:** full attention is bit-exact for 200 seeds × N × causal; HBM bytes equal `traffic.py`.
 
-### Phase 5: NAIVE mode + overlap + perf pinning (1 week)
+### Phase 5: NAIVE mode + overlap + perf pinning (1 week) ✅ DONE
 - NAIVE schedule (Z and P written to and read back from HBM), `cfg_overlap_en` ping-pong prefetch, and the `cfg_hbm_latency` sweep.
 - **Exit:** the whole random matrix (§5 layer 3) is green; `perf_baseline.json` is pinned; the accuracy test is green.
   *At this point the engine is fully verified hardware and worth publishing on its own.*

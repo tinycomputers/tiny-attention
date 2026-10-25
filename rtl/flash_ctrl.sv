@@ -1,9 +1,15 @@
-// FLASH-2 controller (no overlap; cfg_overlap_en is Phase 5). Q blocks of G = cfg_qrows/4 row groups, outer loop.
+// FLASH-2 controller. Q blocks of G = cfg_qrows/4 row groups, outer loop.
 // Per block: clear state, load Q rows, then for each K/V tile kj up to the block's last tile: load K and V (DMA),
 // load Kᵀ/V into the engines (4 cycles), run every unmasked row group of the block through the tile core.
 // After the last K/V tile: normalize the block's rows, store O (DMA write), next block.
 //
-// The state sequence is modelled cycle-exactly in sim/golden/schedule.py; tests/test_e2e.py asserts it.
+// cfg_overlap = 1 (double buffering): while the groups of K/V tile kj run, a separate prefetch sequencer loads K and V
+// of tile kj+1 into the other buffer over the same DMA engine. At the end of tile kj the main FSM waits for the
+// prefetch if it is not finished, then swaps buffers and loads the weights. The prefetch never overlaps a block-boundary
+// DMA: the last tile of a block has no prefetch, and the main FSM waits for the prefetch before any other DMA.
+//
+// The overlap-off state sequence is modelled cycle-exactly in sim/golden/schedule.py; the overlap-on numbers are pinned
+// baselines (sim/perf_baseline.json).
 module flash_ctrl
     import tiny_attn_pkg::*;
 (
@@ -13,6 +19,7 @@ module flash_ctrl
     input  logic [3:0]          cfg_nb,       // K/V tiles = sequence length / 4 (1..8)
     input  logic [3:0]          cfg_gg,       // row groups per Q block = cfg_qrows / 4 (1, 2, 4, 8)
     input  logic                cfg_causal,
+    input  logic                cfg_overlap,
 
     output logic                busy,
     output logic                done,         // one-cycle pulse
@@ -23,13 +30,16 @@ module flash_ctrl
     output logic [HBM_AW-1:0]   dma_addr,
     output logic [6:0]          dma_len,
     output logic [1:0]          dma_dst,      // read destination: 0 = Q, 1 = K, 2 = V
+    output logic                dma_buf,      // K/V buffer for the read words
     input  logic                dma_done,
 
     // tile core
     output logic                blk_clear,
     output logic                kv_load_valid,
     output logic [1:0]          kv_load_idx,
+    output logic                kv_sel,       // K/V buffer used by the weight load
     output logic                tile_start,
+    output logic [2:0]          tile_op,
     output logic [2:0]          tile_grp,
     output logic                tile_diag,
     input  logic                tile_done,
@@ -50,11 +60,15 @@ module flash_ctrl
         C_LDV, C_LDV_W,
         C_WLOAD,
         C_TILE, C_TILE_W,
+        C_WAITPF,
         C_NORM, C_NORM_W,
         C_STO, C_STO_W,
         C_DONE
     } cstate_t;
     cstate_t st;
+
+    typedef enum logic [2:0] {PF_IDLE, PF_K_ISSUE, PF_K_W, PF_V_ISSUE, PF_V_W, PF_DONE} pstate_t;
+    pstate_t pf;
 
     logic [3:0] gb;       // first row group of the current block
     logic [3:0] bg;       // row groups in the current block
@@ -62,13 +76,14 @@ module flash_ctrl
     logic [3:0] kj;       // current K/V tile
     logic [3:0] gi;       // row group within the block being tiled
     logic [1:0] wcnt;     // weight-load row
+    logic       cur;      // K/V buffer of the current tile (overlap mode; always 0 otherwise)
 
     logic [3:0] nb, gg;
     assign nb = cfg_nb;
     assign gg = cfg_gg;
 
     logic [3:0] rem, bg_c, last_c, g_glob;
-    logic       at_end, skip, last_kj;
+    logic       at_end, skip, last_kj, pf_active, pf_k, pf_v;
     always_comb begin
         rem     = nb - gb;
         bg_c    = (rem < gg) ? rem : gg;
@@ -77,23 +92,36 @@ module flash_ctrl
         at_end  = (gi >= bg);
         skip    = cfg_causal && (kj > g_glob);
         last_kj = (kj == last);
+        pf_k    = (pf == PF_K_ISSUE) || (pf == PF_K_W);
+        pf_v    = (pf == PF_V_ISSUE) || (pf == PF_V_W);
+        pf_active = pf_k || pf_v;
     end
 
     assign busy      = (st != C_IDLE);
     assign done      = (st == C_DONE);
     assign dbg_state = st;
 
-    assign dma_start = (st == C_LDQ) || (st == C_LDK) || (st == C_LDV) || (st == C_STO);
-    assign dma_dir   = (st == C_STO);
-    assign dma_dst   = ((st == C_LDK) || (st == C_LDK_W)) ? 2'd1 :
-                       ((st == C_LDV) || (st == C_LDV_W)) ? 2'd2 : 2'd0;
+    assign dma_start = (st == C_LDQ) || (st == C_LDK) || (st == C_LDV) || (st == C_STO) ||
+                       (pf == PF_K_ISSUE) || (pf == PF_V_ISSUE);
+    assign dma_dir   = (st == C_STO) || (st == C_STO_W);
+    assign dma_dst   = ((st == C_LDK) || (st == C_LDK_W) || pf_k) ? 2'd1 :
+                       ((st == C_LDV) || (st == C_LDV_W) || pf_v) ? 2'd2 : 2'd0;
+    assign dma_buf   = pf_active ? ~cur : cur;
+
+    // prefetch tile index is kj + 1; the main FSM does not advance kj until the prefetch is consumed
+    logic [3:0] kj_next;
+    assign kj_next = kj + 4'd1;
 
     always_comb begin
         case (st)
             C_LDK, C_LDK_W: dma_addr = HBM_AW'(K_BASE) + HBM_AW'({kj, 2'b00});
             C_LDV, C_LDV_W: dma_addr = HBM_AW'(V_BASE) + HBM_AW'({kj, 2'b00});
             C_STO, C_STO_W: dma_addr = HBM_AW'(O_BASE) + HBM_AW'({gb, 3'b000});
-            default:        dma_addr = HBM_AW'({gb, 2'b00});                  // Q
+            default: begin
+                if (pf_k)      dma_addr = HBM_AW'(K_BASE) + HBM_AW'({kj_next, 2'b00});
+                else if (pf_v) dma_addr = HBM_AW'(V_BASE) + HBM_AW'({kj_next, 2'b00});
+                else           dma_addr = HBM_AW'({gb, 2'b00});                  // Q
+            end
         endcase
     end
 
@@ -108,24 +136,38 @@ module flash_ctrl
     assign blk_clear     = (st == C_BLK);
     assign kv_load_valid = (st == C_WLOAD);
     assign kv_load_idx   = wcnt;
+    assign kv_sel        = cur;
     assign tile_start    = (st == C_TILE) && !at_end && !skip;
+    assign tile_op       = OP_FLASH;
     assign tile_grp      = gi[2:0];
     assign tile_diag     = cfg_causal && (kj == g_glob);
     assign blk_norm      = (st == C_NORM);
     assign blk_nrows     = 6'({bg, 2'b00});
-    assign ev_kv_load    = (st == C_LDK);
+    assign ev_kv_load    = (st == C_LDK) || (pf == PF_K_ISSUE);
     assign ev_tile       = tile_start;
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             st   <= C_IDLE;
+            pf   <= PF_IDLE;
             gb   <= '0;
             bg   <= '0;
             last <= '0;
             kj   <= '0;
             gi   <= '0;
             wcnt <= '0;
+            cur  <= 1'b0;
         end else begin
+            // ---- prefetch sequencer (runs alongside the main FSM)
+            case (pf)
+                PF_K_ISSUE: pf <= PF_K_W;
+                PF_K_W:     if (dma_done) pf <= PF_V_ISSUE;
+                PF_V_ISSUE: pf <= PF_V_W;
+                PF_V_W:     if (dma_done) pf <= PF_DONE;
+                default: ;
+            endcase
+
+            // ---- main FSM
             case (st)
                 C_IDLE: begin
                     if (start) begin
@@ -138,6 +180,7 @@ module flash_ctrl
                     last <= last_c;
                     kj   <= '0;
                     gi   <= '0;
+                    cur  <= 1'b0;
                     st   <= C_LDQ;
                 end
                 C_LDQ:   st <= C_LDQ_W;
@@ -156,6 +199,7 @@ module flash_ctrl
                     if (wcnt == 2'd3) begin
                         gi <= '0;
                         st <= C_TILE;
+                        if (cfg_overlap && (kj != last)) pf <= PF_K_ISSUE;
                     end
                 end
                 C_TILE: begin
@@ -163,9 +207,17 @@ module flash_ctrl
                         gi <= '0;
                         if (last_kj) begin
                             st <= C_NORM;
-                        end else begin
+                        end else if (!cfg_overlap) begin
                             kj <= kj + 4'd1;
                             st <= C_LDK;
+                        end else if (pf == PF_DONE) begin
+                            kj  <= kj + 4'd1;
+                            cur <= ~cur;
+                            pf  <= PF_IDLE;
+                            wcnt <= '0;
+                            st  <= C_WLOAD;
+                        end else begin
+                            st <= C_WAITPF;
                         end
                     end else if (skip) begin
                         gi <= gi + 4'd1;
@@ -177,6 +229,15 @@ module flash_ctrl
                     if (tile_done) begin
                         gi <= gi + 4'd1;
                         st <= C_TILE;
+                    end
+                end
+                C_WAITPF: begin
+                    if (pf == PF_DONE) begin
+                        kj   <= kj + 4'd1;
+                        cur  <= ~cur;
+                        pf   <= PF_IDLE;
+                        wcnt <= '0;
+                        st   <= C_WLOAD;
                     end
                 end
                 C_NORM:   st <= C_NORM_W;
