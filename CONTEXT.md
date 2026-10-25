@@ -31,7 +31,9 @@ On a fresh machine delete the symlinks and run `.tools/setup.sh` and `.tools/ems
 - Phase 5 (overlap, NAIVE, perf pins): DONE. `naive_ctrl` (4 passes, block-by-block), FLASH double-buffered K/V prefetch
   (`cfg_overlap`), tile operations OP_NZ / OP_NM / OP_NP / OP_NPV, HBM 2048 words. Full e2e (200 seeds) and unit suites
   pass; perf baseline in `sim/perf_baseline.json` (re-record with `PERF_RECORD=1 COCOTB_TEST_FILTER=perf_grid bash sim/run_e2e.sh`).
-- Next: Phase 6 (WASM harness: dual models, bindings, state schema, Node test against the golden fixtures).
+- Phase 6 (WASM harness): DONE. `wasm/build.sh` builds `web/public/tiny_attn.{mjs,wasm}` (81 KB gzipped); `node wasm/test.mjs`
+  checks three golden fixtures on interleaved instances, exactly. JS API in `docs/STATE_SCHEMA.md`.
+- Next: Phase 7 (web UI). First: wide-signal access so the per-clock state carries per-PE values and softmax lanes.
 
 ## Gotchas found in Phase 5
 - The NAIVE tile operations reuse the online-softmax unit: OP_NM uses its m path, OP_NP uses its P and l path with alpha = 1

@@ -8,7 +8,7 @@ Fourth project in the series after [tiny-gpu](https://github.com/deaneeth/tiny-g
 [tiny-tpu](https://github.com/deaneeth/tiny-tpu) and tiny-cpu. Same rule as the others: nothing on screen is
 faked; every value comes from a `dbg_*` port on the compiled RTL.
 
-**Status:** Phases 0-5 done: the FLASH engine, the NAIVE baseline and K/V overlap are bit-exact against the golden model, with byte counts, tile counts and cycle counts verified (FLASH sequential exactly against a closed-form model; overlap and NAIVE against pinned baselines). See [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.
+**Status:** Phases 0-6 done: the engine (FLASH, NAIVE, K/V overlap) is bit-exact against the golden model and compiled to WebAssembly (81 KB gzipped), with a Node test over golden fixtures. Next is the web UI. See [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.
 
 ## Quick start
 
@@ -17,7 +17,8 @@ bash .tools/setup.sh && bash .tools/emsdk.sh      # Verilator 5.036 + Emscripten
 python3 -m venv .venv && .venv/bin/pip install -r sim/requirements.txt
 source scripts/env.sh
 
-bash wasm/spike/build.sh && node wasm/spike/test.mjs   # WASM spike
+bash wasm/build.sh && node wasm/test.mjs              # engine WASM + golden fixtures
+bash wasm/spike/build.sh && node wasm/spike/test.mjs   # toolchain spike
 cd web && pnpm install && pnpm dev                     # open /spike
 ```
 

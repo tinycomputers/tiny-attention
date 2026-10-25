@@ -257,3 +257,13 @@ def test_bit_width_bounds_worst_case():
             assert np.abs(t["O"]).max() < 1 << 25, name  # 26-bit signed
             assert t["P"].max() <= 256  # 9-bit unsigned
         assert np.abs(res.out).max() <= 127 * 256
+
+
+# ------------------------------------------------------------------ WASM fixtures
+def test_wasm_fixtures_fresh():
+    """wasm/fixtures must be exactly what export_fixtures.py produces (the Node test trusts them)."""
+    import export_fixtures as ef
+
+    for c in ef.CASES:
+        path = ef.OUT / f"{c['name']}.json"
+        assert path.read_text() == ef.fixture_text(c), f"{path.name} is stale: run sim/golden/export_fixtures.py"
