@@ -258,3 +258,58 @@ N = 32, non-causal (`traffic.py`):
   numbers in 9.3 are the Phase 4 baseline that Phase 5 will be measured against.
 - NAIVE mode is Phase 5.
 - The HBM model has no bandwidth limit beyond one word per cycle, and writes are not latency-modelled.
+
+## 10. Phase 5: overlap, NAIVE schedule, perf baselines (design, written before RTL)
+
+### 10.1 Overlap (`cfg_overlap_en`, FLASH only)
+
+- K and V are double-buffered in `tiny_attn_top` (`kbuf[2]`, `vbuf[2]`, 4 words each). `cur` selects the buffer in use.
+- A prefetch sequencer, separate from the main FSM, starts when the group loop of K/V tile `kj` begins and `kj` is not the
+  block's last tile. It loads K then V of tile `kj+1` into buffer `!cur` over the one DMA engine.
+- The main FSM, at the end of tile `kj`'s group loop, waits for the prefetch to finish (`C_WAITPF`, zero cycles if it has),
+  swaps `cur`, then runs the weight load (4 cycles, serial: PE weights are stationary) and the next group loop.
+- Not overlapped: the Q load, the first K/V tile of each block, and the O store.
+- Only one DMA burst is in flight at a time, so the prefetch and the main FSM never issue DMA together. The protocol
+  guarantees the prefetch is done before any block-boundary DMA.
+
+### 10.2 NAIVE schedule (`cfg_mode = NAIVE`)
+
+Same arithmetic as FLASH, with the normalization deferred as in the golden model (`fixed.naive`). Blocks are always
+4 rows. Off-chip layout: Z tile `(qi,kj)` at `Z_BASE + 64·qi + 8·kj` (8 words, 2 int16 per word); P tile at `P_BASE + …`.
+HBM grows to 2048 words (`HBM_AW = 11`).
+
+| Pass | Per tile pair `(qi, kj)` | Block-level |
+|---|---|---|
+| 1 | load K tile, weight load, `OP_NZ`: MM1 + scale/mask → Z rows out; DMA write Z tile | Q block loaded once |
+| 2 | DMA read Z tile → `OP_NM`: row max into `m` | `m` is final after the last kj |
+| 3 | DMA read Z tile → `OP_NP`: `P = exp2(Z − m)`, `l += ΣP`; DMA write P tile | |
+| 4 | DMA read P tile, load V tile, weight load, `OP_NPV`: MM2 with P, O += P·V with α = 1 | normalize, store O |
+
+Masking, the `MASK` sentinel, and the causal diagonal are the same as the golden model. Pass 2 and pass 3 visit the
+same tiles, so pass 2 finishes a block before pass 3 starts on it.
+
+Traffic follows `traffic.py` NAIVE term by term: pass 1 reads `Q` once per block and `K` per tile; passes 2 and 3 each
+read `Z` per tile; pass 3 writes `P` per tile; pass 4 reads `P` and `V` per tile; O is written once per block.
+
+NAIVE has no overlap in Phase 5.
+
+### 10.3 Tile-core operations
+
+`tile_start` carries an operation:
+
+| Op | Input | Output | State effect |
+|---|---|---|---|
+| `OP_FLASH` | Q (streamed), K/V weights | O rows (normalized at block end) | m, l, α, O (online) |
+| `OP_NZ` | Q (streamed), K weights | Z rows on the output port | none |
+| `OP_NM` | Z tile (`tin`) | none | m = max(m, rowmax) |
+| `OP_NP` | Z tile (`tin`) | P rows on the output port | l += ΣP (α = 1 by construction) |
+| `OP_NPV` | P tile (`tin`), V weights | none | O += P·V (α forced to 1) |
+
+The output port (`out_*`) carries normalized O, Z or P rows; they go to the staging buffer, and the DMA writes them out.
+
+### 10.4 Performance baselines
+
+Phase 5 pins measured busy cycles for a grid of `(N, causal, qrows, L, overlap, mode)` in `sim/perf_baseline.json`.
+The FLASH non-overlapped case stays exact against the closed-form model from Phase 4. The overlapped and NAIVE cases
+are regression baselines measured from the RTL. Each one is checked by `sim/test_perf.py`; a change fails the test and
+must be justified in review.
