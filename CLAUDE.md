@@ -12,7 +12,7 @@ in the browser.
 
 Pipeline: `rtl/*.sv` -> Verilator C++ -> Emscripten -> `web/public/tiny_attn.wasm` -> React island -> SVG.
 
-## Commands (available from Phase 0; toolchain copied from tiny-cpu)
+## Commands (toolchain copied from tiny-cpu)
 
 Toolchains are project-local (no root needed). Bootstrap once, then source the env in every shell:
 
@@ -26,18 +26,20 @@ Never export `VERILATOR_ROOT`.
 
 ### Golden model (Phase 1)
 ```bash
-pytest sim/golden -q
-python sim/golden/gen_luts.py     # regenerates rtl/mem/*.mem; commit the result
+pytest sim/golden -q                  # SEEDS=1000 for the full sweep
+python sim/golden/gen_luts.py     # regenerates rtl/lut_pkg.sv; commit the result
+python sim/golden/study.py 200    # numerics study (see docs/NUMERICS.md)
 ```
 
 ### RTL lint
 ```bash
-verilator --lint-only -Wall --top-module counter rtl/spike/counter.sv   # Phase 0; becomes rtl/*.sv
+bash sim/lint.sh      # -Wall on every module, plus the MM2 parameter set
 ```
 
-### Simulation (cocotb, run from `sim/`)
+### Simulation (cocotb)
 ```bash
-cd sim && make MODULE=test_counter TOPLEVEL=counter VERILOG_SOURCES="$PWD/../rtl/spike/counter.sv" WAVES=0
+bash sim/run_unit.sh   # every unit suite, one SIM_BUILD each; exp2/recip exhaustive (~2 min)
+cd sim && make MODULE=test_counter TOPLEVEL=counter VERILOG_SOURCES="$PWD/../rtl/spike/counter.sv" WAVES=0   # Phase 0 spike
 ```
 
 ### WASM
