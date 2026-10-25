@@ -1,14 +1,17 @@
-// Tile core for one Q block of up to 32 rows (8 row groups of 4), driven by flash_ctrl.
+// Tile core for one Q block of up to 32 rows (8 row groups of 4), driven by flash_ctrl or naive_ctrl.
 //
-// Per K/V tile: kv_load (4 cycles) puts Kᵀ into MM1's weights and V into MM2's weights. Then every unmasked
-// row group of the block runs once through the pipeline with tile_start(tile_grp):
-//   MM1 (A = Q rows, W = Kᵀ) -> scale/mask -> online softmax -> MM2 (A = P rows, W = V) -> O update.
-// Row state (m, l, alpha, O) is kept per row in 32-entry arrays; the row index is {group, row-in-group}.
-// After the last K/V tile, blk_norm normalizes the first blk_nrows rows and emits them on out_*.
+// Operations (tile_op, see tiny_attn_pkg):
+//   OP_FLASH  Per K/V tile: kv_load (4 cycles) puts Kᵀ into MM1 and V into MM2. Then each unmasked row group runs
+//             MM1 (A = Q rows, W = Kᵀ) -> scale/mask -> online softmax -> MM2 (A = P, W = V) -> O update.
+//             Row state (m, l, alpha, O) is per row, index {group, row-in-group}. After the last tile, blk_norm.
+//   OP_NZ     MM1 + scale/mask only: each Z row goes to the output port. No state change.
+//   OP_NM     tin (4 Z rows) -> m = max(m, rowmax) per row.
+//   OP_NP     tin (4 Z rows) -> P = exp2(Z - m) per row (alpha = 1 by construction), l += sum(P); P rows to the output port.
+//   OP_NPV    tin (4 P rows, 9 bit in 16-bit lanes) through MM2 with the loaded V weights; O += P.V with alpha = 1.
 //
-// Timing of one group tile (c0 = first cycle after tile_start): Q rows enter MM1 at c0..c0+3, S rows leave MM1
-// at c0+7..c0+10, the softmax stage runs on each, P rows enter MM2 at c0+8..c0+11, PV rows leave MM2 at
-// c0+15..c0+18, tile_done at c0+19. tile_start to tile_done is 20 cycles (see sim/test_attn_tile.py).
+// Timing of an OP_FLASH group tile (c0 = first cycle after tile_start): Q rows enter MM1 at c0..c0+3, S rows leave
+// MM1 at c0+7..c0+10, P rows enter MM2 at c0+8..c0+11, PV rows leave at c0+15..c0+18, tile_done at c0+19.
+// tile_start to tile_done is 20 cycles (sim/test_attn_tile.py).
 /* verilator lint_off PINCONNECTEMPTY */  // mm_engine.busy is unused: tile_busy comes from the FSM
 module attn_tile
     import tiny_attn_pkg::*;
@@ -28,8 +31,10 @@ module attn_tile
     input  logic [4*Q_W-1:0]       v_row,           // row r of V
 
     input  logic                   tile_start,
+    input  logic [2:0]             tile_op,
     input  logic [2:0]             tile_grp,        // row group within the block
     input  logic                   tile_diag,       // this group's diagonal K/V tile (causal mask inside)
+    input  logic [4*4*16-1:0]      tin,             // NAIVE input tile: 4 rows x 4 lanes x 16 bit, row-major
     output logic                   tile_busy,
     output logic                   tile_done,
 
@@ -37,8 +42,8 @@ module attn_tile
     input  logic [5:0]             blk_nrows,       // rows to normalize (4 per group in use)
     output logic                   blk_done,
     output logic                   out_valid,
-    output logic [4:0]             out_idx,         // row within the block
-    output logic [4*OUT_W-1:0]     out_row,         // Q8.8 V-LSB values, lane c in bits [c*16 +: 16]
+    output logic [4:0]             out_idx,         // row within the block (or tile row for NZ / NP)
+    output logic [4*OUT_W-1:0]     out_row,         // Q8.8 V-LSB values (O), or Z / P lanes
 
     // ---- debug: real registers and wires. Tile values are for the group of the most recent tile.
     output logic [2:0]             dbg_cur_grp,
@@ -57,7 +62,7 @@ module attn_tile
     output logic [16*P_W-1:0]      dbg_mm2_a,
     output logic [16*PV_W-1:0]     dbg_mm2_psum
 );
-    typedef enum logic [1:0] {S_IDLE, S_RUN, S_NORM} state_t;
+    typedef enum logic [1:0] {S_IDLE, S_RUN, S_ROWS, S_NORM} state_t;
     state_t state;
 
     // ---- per-row state (row = {group, row-in-group})
@@ -67,12 +72,13 @@ module attn_tile
     logic [E_W-1:0]         alpha_q [32];
     logic [4*O_W-1:0]       o_q     [32];
 
-    // ---- per-tile values (4 rows of the current group)
+    // ---- per-tile values (4 rows of the current group), FLASH only
     logic [4*S_W-1:0]       s_t     [4];
     logic [4*Z_W-1:0]       z_t     [4];
     logic [4*P_W-1:0]       p_t     [4];
 
     logic [2:0]             cur_grp;
+    logic [2:0]             op_q;
     logic                   diag_q, streaming, p_valid;
     logic [1:0]             qcnt, srow, orow;
     logic [4*P_W-1:0]       p_reg;
@@ -83,13 +89,33 @@ module attn_tile
     assign sidx = {cur_grp, srow};
     assign oidx = {cur_grp, orow};
 
+    logic is_flash, is_nz, is_nm, is_np, is_npv, mm1_run;
+    assign is_flash = (op_q == OP_FLASH);
+    assign is_nz    = (op_q == OP_NZ);
+    assign is_nm    = (op_q == OP_NM);
+    assign is_np    = (op_q == OP_NP);
+    assign is_npv   = (op_q == OP_NPV);
+    assign mm1_run  = is_flash || is_nz;
+
+    // ---- tin rows (NAIVE): row i = tin[i*64 +: 64], lane j = bits [j*16 +: 16]
+    logic [63:0] tin_row;
+    assign tin_row = tin[{srow, 6'b0} +: 64];
+
+    // NPV streams P rows from tin: low 9 bits of each lane
+    logic [4*P_W-1:0] npv_row;
+    logic [7:0]       npv_base;
+    assign npv_base = {qcnt, 6'b0};
+    for (genvar j = 0; j < 4; j++) begin : g_npv
+        assign npv_row[j*P_W +: P_W] = tin[npv_base + 8'(j*16) +: P_W];
+    end
+
     // ---- MM1: S = Q . Kᵀ
     logic             mm1_c_valid;
     logic [4*S_W-1:0] mm1_c_row;
     mm_engine #(.N(4), .A_W(Q_W), .A_SIGNED(1'b1), .W_W(Q_W), .ACC_W(S_W)) u_mm1 (
         .clk(clk), .rst_n(rst_n),
         .w_row_valid(kv_load_valid), .w_row_idx(kv_load_idx), .w_row(kt_row),
-        .a_valid(streaming), .a_row(q_buf[{cur_grp, qcnt}]),
+        .a_valid(streaming && mm1_run), .a_row(q_buf[{cur_grp, qcnt}]),
         .c_valid(mm1_c_valid), .c_row(mm1_c_row), .busy(),
         .dbg_w(dbg_mm1_w), .dbg_a(dbg_mm1_a), .dbg_psum(dbg_mm1_psum)
     );
@@ -105,30 +131,40 @@ module attn_tile
         );
     end
 
-    // ---- online softmax for the row leaving MM1
+    // ---- online softmax: FLASH takes Z from MM1; NM and NP take Z from tin
+    logic [4*Z_W-1:0]      z_src;
     logic signed [Z_W-1:0] m_new;
     logic [E_W-1:0]        alpha_new;
     logic [4*P_W-1:0]      p_row;
     logic [L_W-1:0]        l_new;
+    assign z_src = (is_nm || is_np) ? tin_row : z_row;
     online_softmax u_softmax (
-        .z(z_row), .m_old(m_q[sidx]), .l_old(l_q[sidx]),
+        .z(z_src), .m_old(m_q[sidx]), .l_old(l_q[sidx]),
         .m_new(m_new), .alpha(alpha_new), .p(p_row), .l_new(l_new)
     );
 
-    // ---- MM2: PV = P . V
+    // P row as 16-bit lanes (NAIVE stores P in HBM as 16-bit lanes; the value is at most 256)
+    logic [4*OUT_W-1:0] p_lanes;
+    for (genvar j = 0; j < 4; j++) begin : g_plane
+        assign p_lanes[j*OUT_W +: OUT_W] = OUT_W'(p_row[j*P_W +: P_W]);
+    end
+
+    // ---- MM2: PV = P . V (FLASH: P from the softmax; NPV: P from tin)
     logic                mm2_c_valid;
     logic [4*PV_W-1:0]   mm2_c_row;
     mm_engine #(.N(4), .A_W(P_W), .A_SIGNED(1'b0), .W_W(Q_W), .ACC_W(PV_W)) u_mm2 (
         .clk(clk), .rst_n(rst_n),
         .w_row_valid(kv_load_valid), .w_row_idx(kv_load_idx), .w_row(v_row),
-        .a_valid(p_valid), .a_row(p_reg),
+        .a_valid(is_npv ? streaming : p_valid), .a_row(is_npv ? npv_row : p_reg),
         .c_valid(mm2_c_valid), .c_row(mm2_c_row), .busy(),
         .dbg_w(dbg_mm2_w), .dbg_a(dbg_mm2_a), .dbg_psum(dbg_mm2_psum)
     );
 
-    // ---- O update for the row leaving MM2 (alpha of that row was stored by the softmax stage)
+    // ---- O update for the row leaving MM2. NPV has alpha = 1 (UQ1.15 1.0 = 32768).
     logic [4*O_W-1:0] o_new;
-    o_accumulator u_oacc (.o_old(o_q[oidx]), .alpha(alpha_q[oidx]), .pv(mm2_c_row), .o_new(o_new));
+    logic [E_W-1:0]   alpha_o;
+    assign alpha_o = is_npv ? E_W'(32768) : alpha_q[oidx];
+    o_accumulator u_oacc (.o_old(o_q[oidx]), .alpha(alpha_o), .pv(mm2_c_row), .o_new(o_new));
 
     // ---- normalization: one row per cycle, shared reciprocal
     logic [R_W-1:0]     r_n;
@@ -142,7 +178,7 @@ module attn_tile
         );
     end
 
-    assign tile_busy = (state != S_IDLE);
+    assign tile_busy   = (state != S_IDLE);
     assign dbg_cur_grp = cur_grp;
     assign dbg_srow    = srow;
 
@@ -159,6 +195,7 @@ module attn_tile
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state     <= S_IDLE;
+            op_q      <= '0;
             streaming <= 1'b0;
             p_valid   <= 1'b0;
             p_reg     <= '0;
@@ -190,7 +227,7 @@ module attn_tile
             tile_done <= 1'b0;
             blk_done  <= 1'b0;
             out_valid <= 1'b0;
-            p_valid   <= mm1_c_valid;
+            p_valid   <= mm1_c_valid && is_flash;
 
             if (q_load_valid) q_buf[q_load_idx] <= q_load_row;
 
@@ -205,13 +242,14 @@ module attn_tile
             case (state)
                 S_IDLE: begin
                     if (tile_start) begin
-                        state     <= S_RUN;
+                        op_q      <= tile_op;
                         cur_grp   <= tile_grp;
                         diag_q    <= tile_diag;
-                        streaming <= 1'b1;
+                        streaming <= (tile_op != OP_NM) && (tile_op != OP_NP);
                         qcnt      <= '0;
                         srow      <= '0;
                         orow      <= '0;
+                        state     <= ((tile_op == OP_NM) || (tile_op == OP_NP)) ? S_ROWS : S_RUN;
                     end else if (blk_norm) begin
                         state   <= S_NORM;
                         nrows_q <= blk_nrows;
@@ -225,7 +263,7 @@ module attn_tile
                         if (qcnt == 2'd3) streaming <= 1'b0;
                     end
 
-                    if (mm1_c_valid) begin
+                    if (mm1_c_valid && is_flash) begin
                         s_t[srow]     <= mm1_c_row;
                         z_t[srow]     <= z_row;
                         p_t[srow]     <= p_row;
@@ -236,6 +274,17 @@ module attn_tile
                         srow          <= srow + 2'd1;
                     end
 
+                    if (mm1_c_valid && is_nz) begin
+                        out_valid <= 1'b1;
+                        out_idx   <= {3'b0, srow};
+                        out_row   <= z_row;
+                        srow      <= srow + 2'd1;
+                        if (srow == 2'd3) begin
+                            tile_done <= 1'b1;
+                            state     <= S_IDLE;
+                        end
+                    end
+
                     if (mm2_c_valid) begin
                         o_q[oidx] <= o_new;
                         orow      <= orow + 2'd1;
@@ -243,6 +292,22 @@ module attn_tile
                             tile_done <= 1'b1;
                             state     <= S_IDLE;
                         end
+                    end
+                end
+
+                S_ROWS: begin
+                    // one tile row per cycle: NM updates m, NP updates l and emits P
+                    if (is_nm) m_q[sidx] <= m_new;
+                    if (is_np) begin
+                        l_q[sidx]  <= l_new;
+                        out_valid  <= 1'b1;
+                        out_idx    <= {3'b0, srow};
+                        out_row    <= p_lanes;
+                    end
+                    srow <= srow + 2'd1;
+                    if (srow == 2'd3) begin
+                        tile_done <= 1'b1;
+                        state     <= S_IDLE;
                     end
                 end
 

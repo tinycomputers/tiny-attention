@@ -25,10 +25,20 @@ package tiny_attn_pkg;
     localparam logic signed [Z_W-1:0] Z_MASK = 16'sh8000;  // masked logit; unmasked Z saturates to +-32767
     localparam logic signed [Z_W-1:0] Z_MAX  = 16'sh7fff;
     localparam logic signed [Z_W-1:0] Z_MIN  = 16'sh8001;
+    // Tile-core operations (tile_op)
+    localparam logic [2:0] OP_FLASH = 3'd0;  // online softmax + O (FlashAttention)
+    localparam logic [2:0] OP_NZ    = 3'd1;  // NAIVE pass 1: Z rows out
+    localparam logic [2:0] OP_NM    = 3'd2;  // NAIVE pass 2: row max from Z
+    localparam logic [2:0] OP_NP    = 3'd3;  // NAIVE pass 3: P rows out, l
+    localparam logic [2:0] OP_NPV   = 3'd4;  // NAIVE pass 4: O += P.V
+
     // HBM layout (word addresses). Q, K, V: one word per row (4 int8). O: two words per row (lanes 0-1, 2-3).
-    localparam int HBM_AW  = 8;    // 256 words
+    // Z and P tiles (NAIVE): 8 words each (4 rows x 4 lanes x 16 bit), tile (qi,kj) at base + 64*qi + 8*kj.
+    localparam int HBM_AW  = 11;   // 2048 words
     localparam int Q_BASE  = 0;
     localparam int K_BASE  = 32;
     localparam int V_BASE  = 64;
     localparam int O_BASE  = 96;
+    localparam int Z_BASE  = 256;
+    localparam int P_BASE  = 768;
 endpackage

@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../rtl"
 PKGS="lut_pkg.sv tiny_attn_pkg.sv"
 ALL="$PKGS $(ls *.sv | grep -v '^lut_pkg.sv$' | grep -v '^tiny_attn_pkg.sv$' | grep -v '^spike' | tr '\n' ' ')"
-for top in pe systolic_array mm_engine row_max scale_mask exp2_unit recip_unit online_softmax o_accumulator normalize attn_tile dma hbm_model sram_bank flash_ctrl perf_counters tiny_attn_top; do
+for top in pe systolic_array mm_engine row_max scale_mask exp2_unit recip_unit online_softmax o_accumulator normalize attn_tile dma hbm_model sram_bank flash_ctrl naive_ctrl perf_counters tiny_attn_top; do
   echo "lint: $top"
   verilator --lint-only -Wall --top-module "$top" $ALL
 done
