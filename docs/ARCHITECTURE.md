@@ -386,3 +386,8 @@ Checks: `node wasm/test.mjs` (engine vs golden, now including the K/V buffer in 
 `pnpm test` (quantization, tile order), `pnpm test:e2e`, `pnpm typecheck`, `pnpm lint`, `pnpm build`, `pytest sim/golden`
 (fixture, web-data and traffic-table freshness). The `astro dev` server hangs without output in this environment, so
 browser checks use `astro build` + `astro preview`.
+
+**Committed engine build.** `web/public/tiny_attn.{mjs,wasm}` are tracked: the Vercel build has no Emscripten, so `/app`
+needs the files in git. Rebuild with `bash wasm/build.sh` after any RTL or harness change and commit them with it. CI does
+not yet check that the committed files match a fresh build; the wasm workflow's `node wasm/test.mjs` checks behavior, not
+the files.
