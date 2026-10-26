@@ -149,6 +149,7 @@ Snapshot TinyAttnSim::snapshot() const {
     s.cycles = top_->cycles;
     s.tiles = top_->tiles;
     s.kvLoads = top_->kv_loads;
+    s.tileDone = top_->dbg_tile_done != 0;
     return s;
 }
 
@@ -242,4 +243,31 @@ KVBuffers TinyAttnSim::getKVBuffers() const {
         }
     }
     return kv;
+}
+
+namespace {
+// Signed or unsigned field of `width` bits at bit `lsb` of a word array, as int32.
+int32_t field(const uint32_t* words, int lsb, int width, bool isSigned) {
+    uint64_t v = bitsAt(words, lsb, width);
+    return static_cast<int32_t>(isSigned ? signExtend(v, width) : static_cast<int64_t>(v));
+}
+}  // namespace
+
+Datapath TinyAttnSim::getDatapath() const {
+    Datapath d;
+    const uint32_t* w1 = wordsOf(top_->dbg_mm1_w);
+    const uint32_t* a1 = wordsOf(top_->dbg_mm1_a);
+    const uint32_t* p1 = wordsOf(top_->dbg_mm1_psum);
+    const uint32_t* w2 = wordsOf(top_->dbg_mm2_w);
+    const uint32_t* a2 = wordsOf(top_->dbg_mm2_a);
+    const uint32_t* p2 = wordsOf(top_->dbg_mm2_psum);
+    for (int i = 0; i < 16; ++i) {
+        d.mm1W.push_back(field(w1, i * 8, 8, true));
+        d.mm1A.push_back(field(a1, i * 8, 8, true));
+        d.mm1Psum.push_back(field(p1, i * 17, 17, true));
+        d.mm2W.push_back(field(w2, i * 8, 8, true));
+        d.mm2A.push_back(field(a2, i * 9, 9, false));
+        d.mm2Psum.push_back(field(p2, i * 18, 18, true));
+    }
+    return d;
 }

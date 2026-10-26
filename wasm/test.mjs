@@ -25,6 +25,25 @@ const check = (ok, msg) => {
   }
 };
 
+// FLASH tile order (web/src/lib/schedule.ts): Q blocks outer, K/V tiles, row groups; causal skips masked tiles.
+function flashOrder(n, qrows, causal) {
+  const nb = n / 4;
+  const g = qrows / 4;
+  const order = [];
+  for (let gb = 0; gb < nb; gb += g) {
+    const bg = Math.min(g, nb - gb);
+    const last = causal ? gb + bg - 1 : nb - 1;
+    for (let kj = 0; kj <= last; kj++) {
+      for (let gi = 0; gi < bg; gi++) {
+        const qi = gb + gi;
+        if (causal && kj > qi) continue;
+        order.push({ qi, kj });
+      }
+    }
+  }
+  return order;
+}
+
 function load(fx) {
   const sim = new mod.TinyAttnSim();
   sim.configure(fx.n, fx.qrows, fx.causal, fx.mode === "NAIVE" ? 1 : 0, fx.overlap, fx.latency, fx.cfgScale);
@@ -40,6 +59,23 @@ for (let t = 0; t < maxCycles && sims.some((s) => !s.finished); t++) {
   for (const s of sims) {
     if (s.finished) continue;
     s.last = s.sim.step();
+    if (s.last.tileDone && s.fx.mode === "FLASH") {
+      // one completion per tile; the running row max m never decreases within a row group
+      s.tileDones = (s.tileDones ?? 0) + 1;
+      const t = s.sim.getTile();
+      s.order = s.order ?? flashOrder(s.fx.n, s.fx.qrows, s.fx.causal);
+      const key = s.order[s.tileDones - 1].qi;  // global row group of this completion
+      s.prevM = s.prevM ?? new Map();
+      const prev = s.prevM.get(key);
+      if (prev) {
+        for (let r = 0; r < 4; r++) {
+          if (t.m[r] < prev[r]) {
+            check(false, `${s.fx.name}: m decreased for group ${key} row ${r}: ${prev[r]} -> ${t.m[r]}`);
+          }
+        }
+      }
+      s.prevM.set(key, t.m.slice());
+    }
     if (s.last.done) {
       // the DONE cycle is counted by the busy-cycle counter at its end: one more edge makes the counters final
       s.last = s.sim.step();
@@ -48,7 +84,7 @@ for (let t = 0; t < maxCycles && sims.some((s) => !s.finished); t++) {
   }
 }
 
-for (const { fx, sim, last, finished } of sims) {
+for (const { fx, sim, last, finished, tileDones } of sims) {
   console.log(`${fx.name} (${fx.mode} N=${fx.n} causal=${fx.causal} qrows=${fx.qrows} overlap=${fx.overlap} L=${fx.latency})`);
   check(finished, "engine did not finish");
   const out = Array.from(sim.readOutput());
@@ -57,6 +93,7 @@ for (const { fx, sim, last, finished } of sims) {
   check(last.hbmRdBytes === fx.hbmRdBytes, `read bytes ${last.hbmRdBytes} != ${fx.hbmRdBytes}`);
   check(last.hbmWrBytes === fx.hbmWrBytes, `write bytes ${last.hbmWrBytes} != ${fx.hbmWrBytes}`);
   check(last.tiles === fx.tiles, `tiles ${last.tiles} != ${fx.tiles}`);
+  if (fx.mode === "FLASH") check(tileDones === fx.tiles, `tile completions ${tileDones} != ${fx.tiles}`);
   check(last.kvLoads === fx.kvLoads, `K/V loads ${last.kvLoads} != ${fx.kvLoads}`);
   check(last.cycles === fx.cycles, `busy cycles ${last.cycles} != ${fx.cycles}`);
   if (fx.lastTile) {

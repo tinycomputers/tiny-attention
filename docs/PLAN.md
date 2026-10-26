@@ -452,7 +452,7 @@ The estimates assume one person part-time, at tiny-cpu's pace.
   `HbmMeter`, and **L3 Schedule first**.
 - **Exit:** pick a preset, step forward and back, and watch tiles, buffers and bytes update; the Playwright smoke test passes.
 
-### Phase 8: Remaining levels (1.5 weeks)
+### Phase 8: Remaining levels (1.5 weeks) ✅ DONE (see ARCHITECTURE §13)
 - L1 Softmax cell, L2 Tile dataflow, L4 Naive vs Flash (two instances, N sweep, error panel).
 - **Exit:** every level works on desktop and at 375 px, in light and dark themes.
 

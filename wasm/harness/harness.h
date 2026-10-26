@@ -21,6 +21,7 @@ struct Snapshot {
     uint32_t cycles;     // busy cycles (perf counter)
     uint32_t tiles;
     uint32_t kvLoads;
+    bool tileDone;       // one-cycle pulse: a tile completed on the last edge
 };
 
 // Tile-core state of the most recent tile (see attn_tile.sv dbg_* ports). S, Z, P, m, l, alpha and O are for the
@@ -39,6 +40,13 @@ struct TileState {
 
 // K and V tile buffers. k[(buf*4 + row)*4 + col] is K[row][col] of buffer buf (int8, sign-extended); same for v.
 // sel is the buffer the engine is using for the current tile.
+// Datapath wires of the two systolic arrays, live. Index r*4 + c is PE (r, c). MM1 computes S = Q . Kt (weights Kt,
+// activations Q rows); MM2 computes P . V (weights V, activations P). Values are signed except mm2A (P, unsigned).
+struct Datapath {
+    std::vector<int32_t> mm1W, mm1A, mm1Psum;  // 16 each: int8, int8, int17
+    std::vector<int32_t> mm2W, mm2A, mm2Psum;  // 16 each: int8, uint9, int18
+};
+
 struct KVBuffers {
     int sel;
     std::vector<int32_t> k;  // 32
@@ -71,6 +79,7 @@ public:
     bool isDone() const;
     TileState getTile() const;
     KVBuffers getKVBuffers() const;
+    Datapath getDatapath() const;
     // P tiles written by a NAIVE run (HBM words 768..): n x n probabilities (UQ1.8), row-major. Requires n known.
     std::vector<int32_t> readProbabilities();
 

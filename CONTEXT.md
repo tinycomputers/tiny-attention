@@ -36,7 +36,18 @@ On a fresh machine delete the symlinks and run `.tools/setup.sh` and `.tools/ems
 - Phase 7 (web visualizer `/app`): DONE. Presets, editable Q/K/V (quantized in the browser), schedule, tile values, K/V
   buffers (read from the RTL), HBM meter against the golden traffic model, heatmap (engine P for NAIVE, float reference for
   FLASH), Playwright smoke test (5 tests, production build).
-- Next: Phase 8 (L1 softmax cell, L2 tile dataflow, L4 naive vs flash with two instances, N sweep, error panel).
+- Phase 8 (L1 softmax cell, L2 tile dataflow, L4 naive vs flash, N sweep, error panel): DONE. Engine readouts `tileDone`
+  and `getDatapath`. 12 Playwright tests, 15 Vitest, Node WASM test, one-seed cocotb. Light-mode screenshots not reviewed.
+- Next: Phase 9 (docs, landing page, launch). Also open: the `astro dev` hang.
+
+## Gotchas found in Phase 8
+- The debug datapath wires are idle between tiles. The L2 view keeps the last busy clock's values, or the panel shows zeros.
+- A datapath or buffer value is only meaningful while the engine is inside a tile; say so in the UI.
+- Verilator's wide ports are word arrays; the `wordsOf` template reads any of them.
+- A full run in the browser is cheap, but the pages overflowed at 375 px only after a run (long decimals in the output grid,
+  then a 1 px overhang in the tile grids). The phone check must run a computation first.
+- `astro preview` hung (process state D) during Phase 8; a static file server over `dist/` works. Restart it after each build,
+  because the build removes its working directory.
 
 ## Gotchas found in Phase 7
 - `wasm/fixtures/` holds engine runs and `quantize_cases.json`; the Node test must skip the quantization file (it did not for

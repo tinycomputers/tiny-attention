@@ -8,7 +8,7 @@ Fourth project in the series after [tiny-gpu](https://github.com/deaneeth/tiny-g
 [tiny-tpu](https://github.com/deaneeth/tiny-tpu) and tiny-cpu. Same rule as the others: nothing on screen is
 faked; every value comes from a `dbg_*` port on the compiled RTL.
 
-**Status:** Phases 0-7 done: the engine (FLASH, NAIVE, K/V overlap) is bit-exact against the golden model, compiled to WebAssembly, and shown clock by clock in a browser visualizer at `/app`, with editable inputs, K/V buffers, HBM traffic against the model, and a Playwright smoke test. Next: the L1, L2 and L4 views. See [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.
+**Status:** Phases 0-8 done: the engine (FLASH, NAIVE, K/V overlap) is bit-exact against the golden model and compiled to WebAssembly. The browser visualizer at `/app` has four views (softmax cell, tile dataflow, schedule, naive vs flash with an N sweep) with editable inputs, K/V buffers, HBM traffic against the model, and 12 Playwright tests. Next: the landing page and the documentation pages. See [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.
 
 ## Quick start
 
