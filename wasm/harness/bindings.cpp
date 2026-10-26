@@ -12,6 +12,28 @@ using namespace emscripten;
 namespace {
 std::vector<int32_t> toI32(const val& arr) { return vecFromJSArray<int32_t>(arr); }
 
+val kvToJs(const KVBuffers& kv) {
+    val o = val::object();
+    o.set("sel", kv.sel);
+    o.set("k", val::array(kv.k.begin(), kv.k.end()));
+    o.set("v", val::array(kv.v.begin(), kv.v.end()));
+    return o;
+}
+
+val tileToJs(const TileState& t) {
+    val o = val::object();
+    o.set("curGrp", t.curGrp);
+    o.set("srow", t.srow);
+    o.set("s", val::array(t.s.begin(), t.s.end()));
+    o.set("z", val::array(t.z.begin(), t.z.end()));
+    o.set("p", val::array(t.p.begin(), t.p.end()));
+    o.set("alpha", val::array(t.alpha.begin(), t.alpha.end()));
+    o.set("m", val::array(t.m.begin(), t.m.end()));
+    o.set("l", val::array(t.l.begin(), t.l.end()));
+    o.set("o", val::array(t.o.begin(), t.o.end()));
+    return o;
+}
+
 val snapshotToJs(const Snapshot& s) {
     val o = val::object();
     o.set("cycle", s.cycle);
@@ -50,5 +72,11 @@ EMSCRIPTEN_BINDINGS(tiny_attn) {
             return val::array(words.begin(), words.end());
         }))
         .function("snapshot", optional_override([](TinyAttnSim& self) { return snapshotToJs(self.snapshot()); }))
-        .function("isDone", &TinyAttnSim::isDone);
+        .function("isDone", &TinyAttnSim::isDone)
+        .function("getKVBuffers", optional_override([](TinyAttnSim& self) { return kvToJs(self.getKVBuffers()); }))
+        .function("getTile", optional_override([](TinyAttnSim& self) { return tileToJs(self.getTile()); }))
+        .function("readProbabilities", optional_override([](TinyAttnSim& self) {
+            auto p = self.readProbabilities();
+            return val::array(p.begin(), p.end());
+        }));
 }

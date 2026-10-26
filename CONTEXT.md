@@ -33,7 +33,18 @@ On a fresh machine delete the symlinks and run `.tools/setup.sh` and `.tools/ems
   pass; perf baseline in `sim/perf_baseline.json` (re-record with `PERF_RECORD=1 COCOTB_TEST_FILTER=perf_grid bash sim/run_e2e.sh`).
 - Phase 6 (WASM harness): DONE. `wasm/build.sh` builds `web/public/tiny_attn.{mjs,wasm}` (81 KB gzipped); `node wasm/test.mjs`
   checks three golden fixtures on interleaved instances, exactly. JS API in `docs/STATE_SCHEMA.md`.
-- Next: Phase 7 (web UI). First: wide-signal access so the per-clock state carries per-PE values and softmax lanes.
+- Phase 7 (web visualizer `/app`): DONE. Presets, editable Q/K/V (quantized in the browser), schedule, tile values, K/V
+  buffers (read from the RTL), HBM meter against the golden traffic model, heatmap (engine P for NAIVE, float reference for
+  FLASH), Playwright smoke test (5 tests, production build).
+- Next: Phase 8 (L1 softmax cell, L2 tile dataflow, L4 naive vs flash with two instances, N sweep, error panel).
+
+## Gotchas found in Phase 7
+- `wasm/fixtures/` holds engine runs and `quantize_cases.json`; the Node test must skip the quantization file (it did not for
+  a while and aborted in configure with no useful message).
+- Embind gives 64-bit integers to JavaScript as BigInt, which breaks JSON comparison. Tile values are 32-bit for that reason.
+- The tile core's debug S/Z/P registers are only written by FLASH. NAIVE views must not show them.
+- Playwright 1.64 needs its own Chromium build (`pnpm exec playwright install chromium`); the cache has other versions.
+- `astro dev` hung without output in this environment; `astro build` + `astro preview` works for browser checks.
 
 ## Gotchas found in Phase 5
 - The NAIVE tile operations reuse the online-softmax unit: OP_NM uses its m path, OP_NP uses its P and l path with alpha = 1

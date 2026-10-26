@@ -38,3 +38,16 @@ jobs:
       - name: Build
         working-directory: web
         run: pnpm build
+
+      - name: Unit tests (Vitest)
+        working-directory: web
+        run: pnpm test
+
+      # The engine (web/public/tiny_attn.{mjs,wasm}) is committed, built by wasm.yml's toolchain; no Emscripten here.
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Smoke tests (Playwright, production build)
+        working-directory: web
+        run: pnpm exec playwright test

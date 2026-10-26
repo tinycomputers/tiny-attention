@@ -48,9 +48,22 @@ def build_fixture(c):
     qz = case_inputs(c["seed"], c["n"])
     naive = c["mode"] == "NAIVE"
     qblock = 4 if naive else c["qrows"]
-    res = fixed.naive(qz, c["n"], c["causal"]) if naive else fixed.flash(qz, c["n"], c["causal"], qblock=qblock)
+    res = (fixed.naive(qz, c["n"], c["causal"]) if naive
+           else fixed.flash(qz, c["n"], c["causal"], qblock=qblock, trace=True))
     t = traffic(c["n"], c["causal"], c["mode"], qblock=qblock)
+    extra = {}
+    if naive:
+        extra["probs"] = res.probs.reshape(-1).astype(int).tolist()
+    else:
+        # the last tile the engine computes: largest kj, then largest group index
+        last = max(res.trace, key=lambda e: (e["kj"], e["qi"]))
+        extra["lastTile"] = dict(
+            qi=last["qi"], kj=last["kj"],
+            m=[int(x) for x in last["m"]], l=[int(x) for x in last["l"]],
+            alpha=[int(x) for x in last["alpha"]], o=last["O"].reshape(-1).astype(int).tolist(),
+        )
     return dict(
+        **extra,
         name=c["name"],
         mode=c["mode"],
         n=c["n"],

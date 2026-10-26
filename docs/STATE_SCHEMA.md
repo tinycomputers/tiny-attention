@@ -39,6 +39,9 @@ class TinyAttnSim {
   readHbm(addr: number, len: number): number[];  // raw 32-bit words (Z/P tiles are at 256 and 768)
   snapshot(): Snapshot;
   isDone(): boolean;
+  getTile(): TileState;        // tile-core values of the most recent tile (S, Z, P, m, l, alpha, O)
+  getKVBuffers(): KVBuffers;   // K and V tile buffers (both), and the buffer in use
+  readProbabilities(): number[];  // NAIVE: P from HBM, n*n values (UQ1.8)
   delete(): void;
 }
 ```
@@ -54,6 +57,12 @@ Input validation throws: `n` must be a multiple of 4 in 4..32, `qrows` one of 4,
 4. `step()` once more, then `readOutput()`.
 
 Multiple instances are independent: each owns its Verilator context. Steps may be interleaved across instances.
+
+## K/V buffers (`getKVBuffers`)
+
+`k[(buf*4 + row)*4 + col]` is K[row][col] of buffer `buf` (int8, sign-extended); `v` the same for V. `sel` is the buffer
+the engine uses for the current tile. Buffer 1 is used only by the overlap schedule. Checked in `wasm/test.mjs`: after a
+run, the buffer in use holds the last K/V tile loaded.
 
 ## Address map of the HBM model (words)
 

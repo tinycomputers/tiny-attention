@@ -23,10 +23,11 @@ sim/results.xml
 
 # WASM build intermediates and generated artifacts
 wasm/build/
-web/public/tiny_attn.mjs
+!web/public/tiny_attn.mjs
 web/public/spike/
 *.o
 *.wasm
+!web/public/tiny_attn.wasm
 
 # Toolchain checkouts (built by .tools/*.sh, or symlinked to a sibling project's)
 .tools/*
@@ -40,3 +41,7 @@ web/public/spike/
 # Agent scratch
 .agents/
 .claude/
+
+# Playwright output
+web/test-results/
+web/playwright-report/

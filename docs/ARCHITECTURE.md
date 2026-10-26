@@ -355,3 +355,39 @@ masking. A fresh instance reproduces the run, so no state leaks between instance
 
 Deviation from the plan: the per-clock state exported to JavaScript is a subset (controller state, counters, byte counts).
 Per-PE values, softmax lanes and SRAM tiles need wide-signal access and are the first item of Phase 7.
+
+## 12. Phase 7: web visualizer (as built)
+
+`/app` (`web/src/pages/app.astro`) runs the WASM engine in the browser and shows it clock by clock.
+
+- **Presets** (`sim/golden/presets.py` → `web/src/lib/presets.ts`, generated): six attention patterns with token labels.
+  Their Q/K/V are quantized in the browser by `web/src/lib/quantize.ts`, a mirror of `fixed.quantize`. Both are checked
+  against golden values in `pytest` (freshness) and `vitest` (values).
+- **Controls**: schedule (FLASH / NAIVE), causal, overlap (FLASH), `cfg_qrows`, HBM latency. Start, Step, Back (rebuilds
+  the run from reset and advances N−1 clocks), Run to end, Reset.
+- **Views**: the tile schedule (FLASH: row groups × K/V tiles, with the causal mask; NAIVE: pass-1 Z tiles), the current
+  tile's S, Z, P, m, l, α and O (FLASH; NAIVE shows m, l and O only, since its S/Z/P never enter the tile core), HBM bytes,
+  tile count, K/V loads, and controller state names (`FLASH_STATES` / `NAIVE_STATES`, matching the enums in the RTL).
+- **Result**: the dequantized O, its maximum deviation from float attention (`web/src/lib/reference.ts`), and for NAIVE the
+  probability matrix read back from HBM, with token labels.
+
+Checks: `node wasm/test.mjs` (engine vs golden), `pnpm test` (quantization and tile order against the fixtures),
+`pnpm typecheck`, `pnpm lint`, `pnpm build`. The browser run (built site, `astro preview`) showed no console errors; the
+FLASH run and the NAIVE run both finished with max deviation 0.0049 on the toy preset; the phone width has no horizontal scroll.
+
+Phase 7 items, all built: `MatrixEditor` (the Q, K and V values are editable; editing resets the run), `SramPanel` (the
+K and V tile buffers, read from the RTL through `dbg_kbuf`, `dbg_vbuf`, `dbg_kv_sel`, with the buffer in use outlined),
+`HbmMeter` (bytes so far against the expected total, from `web/src/lib/traffic-table.ts`, generated from
+`sim/golden/traffic.py`), and `AttentionHeatmap` (engine probabilities from HBM for NAIVE; the float reference for FLASH,
+which never stores P). The Playwright smoke test (`pnpm test:e2e`, five tests: FLASH output against float, step and back,
+NAIVE probabilities, editing and re-running, phone width) runs against the production build.
+
+Checks: `node wasm/test.mjs` (engine vs golden, now including the K/V buffer in use against the last tile loaded),
+`pnpm test` (quantization, tile order), `pnpm test:e2e`, `pnpm typecheck`, `pnpm lint`, `pnpm build`, `pytest sim/golden`
+(fixture, web-data and traffic-table freshness). The `astro dev` server hangs without output in this environment, so
+browser checks use `astro build` + `astro preview`.
+
+**Committed engine build.** `web/public/tiny_attn.{mjs,wasm}` are tracked: the Vercel build has no Emscripten, so `/app`
+needs the files in git. Rebuild with `bash wasm/build.sh` after any RTL or harness change and commit them with it. CI does
+not yet check that the committed files match a fresh build; the wasm workflow's `node wasm/test.mjs` checks behavior, not
+the files.

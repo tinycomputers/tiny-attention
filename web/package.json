@@ -8,7 +8,9 @@
     "preview": "astro preview",
     "lint": "eslint .",
     "typecheck": "astro check && tsc --noEmit",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:e2e": "pnpm build && playwright test"
   },
   "dependencies": {
     "@astrojs/react": "^4.4.2",
@@ -24,6 +26,8 @@
   "devDependencies": {
     "@astrojs/check": "^0.9.4",
     "@eslint/js": "^9.13.0",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^22.20.5",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@typescript-eslint/eslint-plugin": "^8.12.2",
@@ -34,6 +38,7 @@
     "globals": "^17.6.0",
     "prettier": "^3.3.3",
     "prettier-plugin-tailwindcss": "^0.6.8",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.7"
   }
 }
