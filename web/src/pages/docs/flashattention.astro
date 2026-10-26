@@ -1,0 +1,36 @@
+---
+import DocsLayout from "@/components/docs/DocsLayout.astro";
+import TrafficDemo from "@/components/docs/TrafficDemo";
+---
+
+<DocsLayout title="FlashAttention" description="The tile schedule of FlashAttention, why it saves memory traffic, and the byte counts of both schedules." current="flashattention">
+  <p>
+    FlashAttention computes attention in tiles. A block of query rows stays on chip. The engine streams key and value tiles
+    past it, one 4-row tile at a time, folds each tile into the running state of
+    <a href="/docs/online-softmax">online softmax</a>, and writes the output once at the end. The <code>N × N</code> score
+    matrix never exists in memory.
+  </p>
+  <h2>The schedule</h2>
+  <ul>
+    <li>Q rows are split into blocks. A block holds <code>cfg_qrows</code> rows (4, 8, 16 or 32 here).</li>
+    <li>For each block, every key and value tile is loaded once and used by all the row groups in the block.</li>
+    <li>With the causal mask, tiles above the diagonal are skipped, and the K/V loads stop at the block's last needed tile.</li>
+    <li>The output of a block is normalized and written once.</li>
+  </ul>
+  <h2>The traffic</h2>
+  <p>
+    Each K or V tile is 16 bytes (4 rows of 4 int8 values), each Q tile is 16 bytes, and each O tile is 32 bytes (4 rows of
+    4 int16 values). With <code>nb = N / 4</code> row groups:
+  </p>
+  <ul>
+    <li><strong>FLASH:</strong> reads 16·nb bytes of Q, plus 32 bytes per K/V tile load. Writes 32·nb bytes of O. A larger Q block means fewer K/V loads.</li>
+    <li><strong>NAIVE:</strong> writes and reads the score tiles Z (32 bytes each) and the probability tiles P (32 bytes each) through HBM, once per pass.</li>
+  </ul>
+  <p>
+    The NAIVE schedule is the standard three-pass softmax: pass 1 writes the scores, pass 2 finds the row maxima, pass 3
+    writes the probabilities, and pass 4 multiplies them by V.
+  </p>
+  <h2>Compare the bytes</h2>
+  <p class="note">The tables come from the golden traffic model, which the cocotb end-to-end test checks against the RTL byte counters.</p>
+  <TrafficDemo client:only="react" />
+</DocsLayout>

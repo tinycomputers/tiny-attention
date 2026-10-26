@@ -456,7 +456,7 @@ The estimates assume one person part-time, at tiny-cpu's pace.
 - L1 Softmax cell, L2 Tile dataflow, L4 Naive vs Flash (two instances, N sweep, error panel).
 - **Exit:** every level works on desktop and at 375 px, in light and dark themes.
 
-### Phase 9: Docs, landing page, launch (1 week)
+### Phase 9: Docs, landing page, launch (1 week) ✅ DONE (see ARCHITECTURE §14; deployed as noted there)
 - The six docs pages, each with an embedded live mini-visualizer. Hero capture and OG image (reuse the tiny-tpu scripts).
 - README in the series style: live demo, verification table (bit-exact seeds, exhaustive unit coverage, measured
   error, HBM savings at N = 32), and FPGA numbers.

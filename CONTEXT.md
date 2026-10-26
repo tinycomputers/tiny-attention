@@ -38,7 +38,11 @@ On a fresh machine delete the symlinks and run `.tools/setup.sh` and `.tools/ems
   FLASH), Playwright smoke test (5 tests, production build).
 - Phase 8 (L1 softmax cell, L2 tile dataflow, L4 naive vs flash, N sweep, error panel): DONE. Engine readouts `tileDone`
   and `getDatapath`. 12 Playwright tests, 15 Vitest, Node WASM test, one-seed cocotb. Light-mode screenshots not reviewed.
-- Next: Phase 9 (docs, landing page, launch). Also open: the `astro dev` hang.
+- Phase 9 (docs, landing page, launch): built. Landing page with the animated FLASH schedule, six docs pages with live
+  demos, `/og` social card, generated `measured.ts`, README rewritten for the series. Deployment: see the PR and
+  ARCHITECTURE §14.
+- Next: Phase 10 (FPGA synthesis, ECP5 for the ULX3S). Blocked here: no yosys / nextpnr / ecppack installed, and the disk
+  had under 1 GB free during Phase 9.
 
 ## Gotchas found in Phase 8
 - The debug datapath wires are idle between tiles. The L2 view keeps the last busy clock's values, or the panel shows zeros.

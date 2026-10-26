@@ -1,16 +1,52 @@
 ---
 import Layout from "@/layouts/Layout.astro";
+import Hero from "@/components/docs/Hero";
 ---
 
-<Layout title="TinyAttention">
-  <main class="mx-auto max-w-2xl px-4 py-16">
-    <h1 class="text-4xl font-bold">TinyAttention</h1>
-    <p class="mt-4" style="color: var(--muted)">
-      A real, synthesizable FlashAttention engine in SystemVerilog, compiled to WebAssembly and
-      running live in your browser. Under construction.
-    </p>
-    <p class="mt-8">
-      <a class="underline" style="color: var(--accent)" href="/spike">Toolchain spike &rarr;</a>
-    </p>
+<Layout
+  title="TinyAttention · FlashAttention in SystemVerilog"
+  description="A synthesizable FlashAttention engine in SystemVerilog, verified bit-exact against a golden model, compiled to WebAssembly and running in your browser."
+>
+  <main class="mx-auto max-w-3xl space-y-12 px-4 py-14">
+    <section class="space-y-5">
+      <p class="text-sm" style={{ color: "var(--accent)" }}>TinyAttention</p>
+      <h1 class="text-4xl font-bold leading-tight">FlashAttention, built in hardware and run in your browser.</h1>
+      <p class="text-lg" style={{ color: "var(--muted)" }}>
+        A synthesizable SystemVerilog engine for attention. It computes the output one tile at a time, so the N×N score
+        matrix never goes to memory. The RTL is verified bit-exact against a golden model, and the same RTL runs here as
+        WebAssembly.
+      </p>
+      <div class="flex flex-wrap gap-3 text-sm">
+        <a href="/app" class="rounded px-4 py-2 font-semibold" style={{ background: "var(--accent)", color: "var(--bg)" }}>Open the engine</a>
+        <a href="/docs" class="rounded px-4 py-2" style={{ border: "1px solid var(--line)" }}>Read the docs</a>
+      </div>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-lg font-semibold">The schedule</h2>
+      <Hero client:load />
+    </section>
+
+    <section class="grid gap-4 sm:grid-cols-3 text-sm">
+      <div class="rounded p-4" style={{ background: "var(--panel)" }}>
+        <div class="text-2xl font-semibold">Bit-exact</div>
+        <p class="mt-1" style={{ color: "var(--muted)" }}>Output, HBM traffic, tile counts and cycle counts match the golden model on every run in the test sweep.</p>
+      </div>
+      <div class="rounded p-4" style={{ background: "var(--panel)" }}>
+        <div class="text-2xl font-semibold">No N×N matrix</div>
+        <p class="mt-1" style={{ color: "var(--muted)" }}>At N = 32, FLASH moves 1536 bytes against 7296 for the naive schedule, with the same result.</p>
+      </div>
+      <div class="rounded p-4" style={{ background: "var(--panel)" }}>
+        <div class="text-2xl font-semibold">In the browser</div>
+        <p class="mt-1" style={{ color: "var(--muted)" }}>The Verilator model is compiled to an 83 KB (gzip) WebAssembly module. You step it clock by clock.</p>
+      </div>
+    </section>
+
+    <section class="space-y-2 text-sm" style={{ color: "var(--muted)" }}>
+      <p>
+        Start with <a class="underline" href="/docs/what-is-attention" style={{ color: "var(--accent)" }}>what attention computes</a>,
+        then the <a class="underline" href="/docs/online-softmax" style={{ color: "var(--accent)" }}>online softmax</a> that makes the tiling possible.
+      </p>
+    </section>
   </main>
 </Layout>

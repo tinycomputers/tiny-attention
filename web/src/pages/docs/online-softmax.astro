@@ -1,0 +1,32 @@
+---
+import DocsLayout from "@/components/docs/DocsLayout.astro";
+import OnlineSoftmaxDemo from "@/components/docs/OnlineSoftmaxDemo";
+---
+
+<DocsLayout title="Online softmax" description="Computing a softmax one tile at a time, with a running max and a running sum, and the rescale that keeps them correct." current="online-softmax">
+  <p>
+    A softmax over a row needs the row's maximum before it can exponentiate. The usual recipe makes three passes over the
+    row: find the maximum, sum the exponentials of the shifted values, then divide. A tiled engine sees the row a few keys
+    at a time, so it cannot do that without storing the whole row.
+  </p>
+  <p>The online softmax keeps two running values for each row: the maximum <code>m</code> so far, and the sum <code>l</code> of exponentials relative to it. When a new tile brings keys with a larger maximum, the old sum was relative to a smaller maximum, so it must shrink. It is multiplied by</p>
+  <p><code>α = exp(m_old − m_new)</code></p>
+  <p>
+    and the same factor rescales the output accumulator <code>O</code>, which is a sum of exponentials times values. After
+    the last tile, <code>O / l</code> is the exact attention output for that row. Nothing about the row has to be kept
+    except <code>m</code>, <code>l</code> and <code>O</code>.
+  </p>
+  <h2>In the engine</h2>
+  <p>
+    The engine works in log base 2, so it uses <code>2^z</code> in place of <code>exp</code>. The scores are scaled to
+    <code>z = s · log₂e / √d</code> and the rescale is <code>α = 2^(m_old − m_new)</code>. The power of two is computed by
+    the exp2 unit (see <a href="/docs/fixed-point">Fixed point</a>), and <code>α</code> is stored as an unsigned 16-bit
+    fraction.
+  </p>
+  <h2>Watch one row</h2>
+  <p class="note">
+    The demo runs the engine on the toy sentence, records the row state after each K/V tile, and shows it next to the float
+    softmax of the same inputs. The difference is fixed-point rounding only.
+  </p>
+  <OnlineSoftmaxDemo client:only="react" />
+</DocsLayout>

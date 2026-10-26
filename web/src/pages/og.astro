@@ -1,0 +1,53 @@
+---
+// The social card, 1200 x 630. Captured to public/og.png by web/scripts/capture-assets.mjs; not linked from the site.
+import { flashTileOrder } from "@/lib/schedule";
+
+const N = 16;
+const QROWS = 8;
+const order = flashTileOrder(N, QROWS, true);
+const blocks = N / 4;
+const done = new Set(order.map((t) => `${t.qi},${t.kj}`));
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="robots" content="noindex" />
+    <title>TinyAttention</title>
+    <style is:global>
+      html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; background: #0d1117; color: #c9d1d9;
+        font-family: "Inter Variable", system-ui, sans-serif; }
+      .card { display: flex; height: 100%; align-items: center; justify-content: space-between; padding: 0 80px; box-sizing: border-box; }
+      h1 { font-size: 72px; line-height: 1.05; margin: 0 0 24px; font-weight: 700; }
+      p { font-size: 26px; line-height: 1.4; margin: 0; color: #8b949e; max-width: 560px; }
+      .kicker { font-size: 22px; color: #58a6ff; margin-bottom: 18px; }
+      .grid { display: grid; gap: 6px; grid-template-columns: 40px repeat(4, 64px); }
+      .cell { width: 64px; height: 64px; border-radius: 6px; border: 2px solid #30363d; box-sizing: border-box; }
+      .label { font-size: 18px; color: #8b949e; display: flex; align-items: center; justify-content: center; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div style="max-width: 600px">
+        <div class="kicker">TinyAttention</div>
+        <h1>FlashAttention in SystemVerilog</h1>
+        <p>Bit-exact against a golden model. Compiled to WebAssembly. Run it in your browser.</p>
+      </div>
+      <div class="grid" role="img" aria-label="FLASH tile schedule">
+        <div></div>
+        {Array.from({ length: blocks }, (_, kj) => <div class="label">kv{kj}</div>)}
+        {Array.from({ length: blocks }, (_, qi) => (
+          <>
+            <div class="label">q{qi}</div>
+            {Array.from({ length: blocks }, (_, kj) => {
+              const masked = kj > qi;
+              const on = done.has(`${qi},${kj}`);
+              return <div class="cell" style={`background: ${masked ? "transparent" : on ? "#3fb950" : "#161b22"}; opacity: ${masked ? 0.2 : 1}`}></div>;
+            })}
+          </>
+        ))}
+      </div>
+    </div>
+  </body>
+</html>

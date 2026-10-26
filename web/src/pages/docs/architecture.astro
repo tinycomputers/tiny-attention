@@ -1,0 +1,90 @@
+---
+import DocsLayout from "@/components/docs/DocsLayout.astro";
+---
+
+<DocsLayout title="Architecture" description="The blocks of the TinyAttention RTL and how they connect: memory, controllers, the tile core and its two systolic arrays." current="architecture">
+  <p>
+    The top level is <code>tiny_attn_top</code>. A host loads Q, K and V into a model of off-chip memory, starts the engine,
+    and reads back the output. Two interchangeable controllers drive one tile core. One selects the FLASH schedule, and the
+    other the NAIVE schedule.
+  </p>
+  <svg viewBox="0 0 720 360" role="img" aria-label="Block diagram: host, HBM, DMA, controllers, tile core" class="w-full" style="max-width: 720px">
+    <g font-family="ui-monospace, Menlo, monospace" font-size="12" fill="var(--fg)" stroke="var(--line)" stroke-width="1.2">
+      <rect x="10" y="20" width="130" height="50" rx="6" fill="var(--panel)" />
+      <text x="75" y="50" text-anchor="middle" stroke="none">host</text>
+      <rect x="10" y="150" width="130" height="50" rx="6" fill="var(--panel)" />
+      <text x="75" y="173" text-anchor="middle" stroke="none">hbm_model</text>
+      <text x="75" y="190" text-anchor="middle" stroke="none" font-size="10" fill="var(--muted)">words, byte counters</text>
+      <rect x="190" y="150" width="120" height="50" rx="6" fill="var(--panel)" />
+      <text x="250" y="173" text-anchor="middle" stroke="none">dma</text>
+      <text x="250" y="190" text-anchor="middle" stroke="none" font-size="10" fill="var(--muted)">bursts, latency</text>
+      <rect x="190" y="20" width="120" height="50" rx="6" fill="var(--panel)" />
+      <text x="250" y="43" text-anchor="middle" stroke="none">flash_ctrl</text>
+      <text x="250" y="58" text-anchor="middle" stroke="none" font-size="10" fill="var(--muted)">tiles, prefetch</text>
+      <rect x="350" y="20" width="120" height="50" rx="6" fill="var(--panel)" />
+      <text x="410" y="43" text-anchor="middle" stroke="none">naive_ctrl</text>
+      <text x="410" y="58" text-anchor="middle" stroke="none" font-size="10" fill="var(--muted)">four passes</text>
+      <rect x="350" y="150" width="120" height="50" rx="6" fill="var(--panel)" />
+      <text x="410" y="173" text-anchor="middle" stroke="none">K/V buffers</text>
+      <text x="410" y="190" text-anchor="middle" stroke="none" font-size="10" fill="var(--muted)">double-buffered</text>
+      <rect x="510" y="20" width="200" height="180" rx="6" fill="var(--panel)" />
+      <text x="610" y="42" text-anchor="middle" stroke="none">attn_tile</text>
+      <rect x="525" y="55" width="170" height="30" rx="4" fill="none" />
+      <text x="610" y="75" text-anchor="middle" stroke="none" font-size="11">MM1  S = Q·Kᵀ (4×4 PEs)</text>
+      <rect x="525" y="95" width="170" height="30" rx="4" fill="none" />
+      <text x="610" y="115" text-anchor="middle" stroke="none" font-size="11">scale, mask, online softmax</text>
+      <rect x="525" y="135" width="170" height="30" rx="4" fill="none" />
+      <text x="610" y="155" text-anchor="middle" stroke="none" font-size="11">MM2  P·V (4×4 PEs)</text>
+      <text x="610" y="185" text-anchor="middle" stroke="none" font-size="10" fill="var(--muted)">O accumulator, normalize</text>
+      <rect x="190" y="260" width="120" height="50" rx="6" fill="var(--panel)" />
+      <text x="250" y="283" text-anchor="middle" stroke="none">sram_bank</text>
+      <text x="250" y="300" text-anchor="middle" stroke="none" font-size="10" fill="var(--muted)">output staging</text>
+      <rect x="350" y="260" width="120" height="50" rx="6" fill="var(--panel)" />
+      <text x="410" y="283" text-anchor="middle" stroke="none">perf_counters</text>
+      <text x="410" y="300" text-anchor="middle" stroke="none" font-size="10" fill="var(--muted)">cycles, bytes, tiles</text>
+      <line x1="140" y1="45" x2="190" y2="45" />
+      <line x1="75" y1="70" x2="75" y2="150" />
+      <line x1="140" y1="175" x2="190" y2="175" />
+      <line x1="310" y1="45" x2="350" y2="45" />
+      <line x1="250" y1="170" x2="250" y2="70" />
+      <line x1="310" y1="175" x2="350" y2="175" />
+      <line x1="470" y1="45" x2="510" y2="45" />
+      <line x1="470" y1="175" x2="510" y2="175" />
+      <line x1="250" y1="260" x2="250" y2="200" />
+    </g>
+  </svg>
+
+  <h2>Memory</h2>
+  <ul>
+    <li><strong>hbm_model</strong> is a 2,048-word memory: Q, K and V rows, the output, and the NAIVE score and probability tiles. It counts the bytes read and written.</li>
+    <li><strong>dma</strong> moves one burst at a time, with a configurable first-word latency (0 to 64 cycles) and one word per cycle after it.</li>
+    <li><strong>K/V buffers</strong> are two K tiles and two V tiles, each 4 rows. Without overlap only the first pair is used. With overlap, the second pair is filled while the first is in use.</li>
+    <li><strong>sram_bank</strong> stages output rows before the DMA writes them.</li>
+  </ul>
+
+  <h2>Controllers</h2>
+  <p>
+    <strong>flash_ctrl</strong> loops over Q blocks and, inside each block, over the K/V tiles. It issues the DMA loads, the
+    weight loads and the group tiles, skips tiles above the causal diagonal, and normalizes and stores each block.
+    <strong>naive_ctrl</strong> runs the four passes of the standard softmax over each row block, writing and reading the
+    score and probability tiles through HBM.
+  </p>
+
+  <h2>Tile core</h2>
+  <p>
+    <code>attn_tile</code> processes one 4-row group against one K/V tile. The two 4×4 systolic arrays are the matrix
+    products. Between them sit the scale-and-mask unit, the row maximum, the exp2 unit and the sum. The O accumulator
+    rescales the running output by α and adds the new product. Five operations share the datapath: FLASH (online),
+    and the four NAIVE passes.
+  </p>
+
+  <h2>Timing</h2>
+  <p>
+    The schedule is exact: busy cycles follow the model in <code>sim/golden/schedule.py</code>, and the end-to-end test
+    checks them for every configuration it runs. Overlap changes the schedule, so its cycle counts are pinned as
+    regression baselines in <code>sim/perf_baseline.json</code>.
+  </p>
+  <p class="note">
+    The design has not been synthesized for an FPGA yet (Phase 10). The numbers on this site come from simulation.
+  </p>
+</DocsLayout>

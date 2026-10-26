@@ -1,0 +1,15 @@
+---
+import DocsLayout from "@/components/docs/DocsLayout.astro";
+---
+
+<DocsLayout title="Docs" description="How attention works, how the FlashAttention schedule and the fixed-point datapath are built, and how the engine is verified." current="docs">
+  <p>Six pages, each with a live demo of the part it explains.</p>
+  <ul>
+    <li><a href="/docs/what-is-attention">What is attention</a>: queries, keys and values, and the score matrix.</li>
+    <li><a href="/docs/online-softmax">Online softmax</a>: how a softmax over a row can be computed a tile at a time.</li>
+    <li><a href="/docs/flashattention">FlashAttention</a>: the tile schedule, and the memory traffic it saves.</li>
+    <li><a href="/docs/fixed-point">Fixed point</a>: the number formats, the exp2 unit, and the measured error.</li>
+    <li><a href="/docs/architecture">Architecture</a>: the blocks of the RTL and how they connect.</li>
+    <li><a href="/docs/verification">Verification</a>: what is tested, how, and the results.</li>
+  </ul>
+</DocsLayout>
