@@ -1,7 +1,8 @@
+/* verilator lint_off IMPORTSTAR */  // package import at file scope: Yosys rejects it in the module header
 // out = clip_int16( (o * r + 2^(7+k)) >>> (8+k) ): o / l as Q8.8 in V-LSB units, round to nearest, where
 // 1/l ~= r / 2^(16+k) comes from recip_unit. One element (combinational). Matches fixed.normalize.
+import tiny_attn_pkg::*;
 module normalize
-    import tiny_attn_pkg::*;
 (
     input  logic signed [O_W-1:0]   o,
     input  logic        [R_W-1:0]   r,

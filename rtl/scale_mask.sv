@@ -1,7 +1,8 @@
+/* verilator lint_off IMPORTSTAR */  // package import at file scope: Yosys rejects it in the module header
 // S (int17) -> Z (Q8.8): Z = sat((S * cfg_scale) >>> (SF - 8)) clipped to +-32767; a masked entry becomes 0x8000.
 // Truncating (floor) shift, as in fixed.scale_mask.
+import tiny_attn_pkg::*;
 module scale_mask
-    import tiny_attn_pkg::*;
 (
     input  logic signed [S_W-1:0]     s,
     input  logic        [SCALE_W-1:0] scale,

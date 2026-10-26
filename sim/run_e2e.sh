@@ -3,6 +3,9 @@
 # SEEDS=200 by default (about 200 x 16 runs). Usage: bash sim/run_e2e.sh   (after `source scripts/env.sh`)
 set -euo pipefail
 cd "$(dirname "$0")"
+# The installed Verilator leaves CFG_CXXFLAGS_PCH_I empty, so some generated models fail to link their precompiled header.
+# -include is the GCC flag that rule needs (see sim/run_fpga.sh).
+export MAKEFLAGS="CFG_CXXFLAGS_PCH_I=-include"
 R=$PWD/../rtl
 SRCS="$R/lut_pkg.sv $R/tiny_attn_pkg.sv $(ls $R/*.sv | grep -v -e lut_pkg.sv -e tiny_attn_pkg.sv | tr '\n' ' ')"
 rm -f results.xml

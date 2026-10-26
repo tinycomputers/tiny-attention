@@ -463,7 +463,7 @@ The estimates assume one person part-time, at tiny-cpu's pace.
 - Deploy to `tiny-attention.vercel.app`.
 - **Exit:** the public URL is live; all CI is green.
 
-### Phase 10: FPGA synthesis (½–1 week, can run alongside Phases 7–9)
+### Phase 10: FPGA synthesis (½–1 week, can run alongside Phases 7–9) — PARTIAL (synthesis and simulated UART done; see ARCHITECTURE §15)
 - `fpga/ecp5` for the ULX3S: 32 INT8 MACs map onto DSP blocks, and the LUTs and SRAM go to BRAM. Host load and readback use UART.
 - `fpga.yml` posts LUT/FF/DSP/BRAM and fmax to the job summary; L4 uses fmax for "real time" estimates.
 - **Exit:** synthesis is clean with no latches; the numbers are in the README. With a board, the toy sentence runs over UART.

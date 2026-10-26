@@ -97,9 +97,15 @@ const seq = MEASURED.study.sequence;
     </tbody>
   </table>
 
+  <h2>FPGA</h2>
+  <p>
+    The engine behind a UART synthesizes for an ECP5 (LFE5U-85F) with no latches. The UART protocol is simulated: the
+    results read back over the serial line match the golden model, and the cycle and byte counts match the models
+    (<code>bash sim/run_fpga.sh</code>). Synthesis runs in CI (<code>fpga.yml</code>).
+  </p>
   <h2>Not verified yet</h2>
   <ul>
-    <li>Synthesis for an FPGA. The timing and area numbers are not measured yet (Phase 10).</li>
-    <li>Real hardware. Everything here runs in simulation or in WebAssembly.</li>
+    <li>Timing at the board clock. The fmax estimate is 11.5 MHz against 25 MHz, and the estimate has no pin constraints.</li>
+    <li>Real hardware. The board has not been used. Everything else runs in simulation or in WebAssembly.</li>
   </ul>
 </DocsLayout>

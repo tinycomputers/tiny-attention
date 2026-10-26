@@ -11,9 +11,13 @@ module perf_counters (
     output logic [31:0] kv_loads
 );
     always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n || clr) begin
-            cycles  <= '0;
-            tiles   <= '0;
+        if (!rst_n) begin
+            cycles   <= '0;
+            tiles    <= '0;
+            kv_loads <= '0;
+        end else if (clr) begin
+            cycles   <= '0;
+            tiles    <= '0;
             kv_loads <= '0;
         end else begin
             if (busy)       cycles   <= cycles + 32'd1;

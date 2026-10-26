@@ -443,3 +443,49 @@ Checks: `pnpm test:e2e` (12 tests, including all four views at 375 px and the li
   demos respond) and every page at 375 px without horizontal scroll. Tables scroll inside their own box on phones.
 - **Not in this phase:** FPGA numbers (Phase 10). The README and the Verification page say so.
 
+## 15. Phase 10: FPGA synthesis (ECP5, ULX3S)
+
+**Target.** Lattice ECP5 LFE5U-85F (CABGA381, speed grade 6), the chip on the ULX3S board. Tools: Yosys (`synth_ecp5`)
+and nextpnr-ecp5, both from YoWASP wheels in `.tools/fpga-venv` (`bash .tools/fpga.sh`). Run with
+`bash fpga/ecp5/synth.sh`; `.github/workflows/fpga.yml` runs the same and writes the numbers to the job summary.
+
+**The wrapper.** `fpga/ecp5/fpga_top.sv` puts the engine behind an 8N1 UART (`fpga/ecp5/uart.sv`). A host sends
+CONFIG, LOAD (one HBM word), START and READ commands and receives DONE (cycles, HBM bytes read and written) and WORD
+replies; the exact byte layout is in the file header. The debug ports are left unconnected, so synthesis removes the
+logic they alone needed.
+
+**Verified in simulation.** `bash sim/run_fpga.sh` drives the wrapper over its UART at 4 clocks per bit and checks, for
+FLASH (causal and not) and NAIVE: the O words read back equal the golden model, and the DONE reply's cycle and byte
+counts equal the closed-form models. It has not run on a board.
+
+**Synthesis (`fpga_top`, no pin constraints):**
+
+| Resource | Used | Available | Share |
+|---|---|---|---|
+| LUT4 positions (TRELLIS_COMB) | 40,416 | 83,640 | 48% |
+| Flip-flops (TRELLIS_FF) | 8,726 | 83,640 | 10% |
+| DSP (MULT18X18D) | 51 | 156 | 33% |
+| Block RAM (DP16KD) | 0 | 208 | 0% |
+
+Yosys reports no inferred latches, and `check -assert` passes. fmax from nextpnr is **11.5 MHz**, against the board's
+25 MHz clock, so **timing is not closed at 25 MHz**. The estimate has no pin constraints, so it is an estimate. Two
+things would have to change before the engine runs at the board clock: the critical path (not yet analysed) and the
+memories (below).
+
+**Memories are LUT RAM, not block RAM.** The HBM model, the K/V buffers and the staging buffer read combinationally, which
+Yosys maps to distributed RAM (2,080 TRELLIS_DPR16X4). Block RAM needs a registered read, which adds a cycle to every DMA
+word and changes the cycle model in `sim/golden/schedule.py` and the pinned baselines. That is a deliberate follow-up,
+not a fix made here.
+
+**Changes made for Yosys.** These do not change behaviour; the unit and end-to-end suites were rerun on them:
+- The LUT tables in `rtl/lut_pkg.sv` are packed vectors (the generator emits them), not unpacked arrays. Yosys does not
+  parse unpacked array localparams.
+- Package imports are at file scope, not in the module header, with a Verilator `IMPORTSTAR` suppression saying why.
+- Each LUT is copied into a local parameter before indexing: Yosys does not resolve a part-select of a package parameter.
+- `exp2_unit` negates the shift with an explicit sign extension, not a width cast with an expression width.
+- `perf_counters` resets with `!rst_n` in the asynchronous branch and `clr` in the synchronous one. A compound reset
+  does not infer a flip-flop in Yosys.
+
+**Not done.** The ULX3S pin constraints (the board is not here, so I did not write them from memory). Running the toy
+sentence on the board. A 25 MHz timing closure. Block RAM for the memories.
+

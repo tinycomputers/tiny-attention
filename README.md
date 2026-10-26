@@ -28,7 +28,7 @@ optional overlap of the K/V loads with compute.
 | HBM traffic at N = 32 | Non-causal: FLASH 2432 B (4-row blocks) or 896 B (16-row blocks), NAIVE 12672 B. Causal: FLASH 1536 B or 768 B, NAIVE 7296 B. |
 | WebAssembly | The compiled module, on golden fixtures for each schedule, matches the same quantities. 83 KB gzipped. |
 | Web app | Browser tests of every page, the visualizer at phone width and in both colour schemes. |
-| FPGA | Not yet synthesized (Phase 10). No timing or area numbers are claimed. |
+| FPGA (ECP5 LFE5U-85F) | Synthesizes with no latches: 40,416 of 83,640 LUT4 positions, 8,726 flip-flops, 51 of 156 DSP blocks, no block RAM. fmax estimate 11.5 MHz, so timing is not closed at the ULX3S 25 MHz clock. The UART interface is verified in simulation; it has not run on a board. |
 
 Every row is a test in the repository, run by GitHub Actions on each pull request. The docs page
 [Verification](https://tiny-attention.vercel.app/docs/verification) lists each check and its numbers.

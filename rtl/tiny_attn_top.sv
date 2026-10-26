@@ -1,10 +1,11 @@
+/* verilator lint_off IMPORTSTAR */  // package import at file scope: Yosys rejects it in the module header
 // TinyAttention engine: FLASH-2 or NAIVE schedule over an off-chip (HBM) model, optionally with K/V overlap.
 //
 // Host protocol: write Q, K, V rows into HBM with the load port (one word per row: lane c in bits [c*8 +: 8]).
 // Set the config, pulse start, wait for done, read O back (two words per row, lanes 0-1 then 2-3, int16).
 // Load and readback only while idle. Counters are cleared by start and hold their values after done.
+import tiny_attn_pkg::*;
 module tiny_attn_top
-    import tiny_attn_pkg::*;
 (
     input  logic                clk,
     input  logic                rst_n,

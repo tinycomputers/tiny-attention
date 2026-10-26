@@ -1,7 +1,7 @@
 """Single source of truth for the exp2 and reciprocal ROMs.
 
 fixed.py imports exp2_lut()/recip_lut() from here; running this file writes the same values to
-rtl/lut_pkg.sv as SystemVerilog localparam arrays (no $readmemh, so it works in Verilator, Yosys and
+rtl/lut_pkg.sv as packed SystemVerilog localparams (no $readmemh, so it works in Verilator, Yosys and
 WASM without any file access). test_golden.py fails if the checked-in file drifts.
 
     python sim/golden/gen_luts.py
@@ -29,11 +29,14 @@ def recip_lut() -> list[int]:
 
 
 def _array(name: str, values: list[int]) -> str:
+    """Packed constant: entry i is bits [16*i +: 16]. Unpacked array localparams do not parse in Yosys."""
+    n = len(values)
+    tokens = [f"16'h{v:04x}" for v in reversed(values)]  # the first entry goes in the low bits
     rows = []
-    for i in range(0, len(values), 8):
-        rows.append("        " + ", ".join(f"16'h{v:04x}" for v in values[i:i + 8]))
+    for i in range(0, n, 8):
+        rows.append("        " + ", ".join(tokens[i:i + 8]))
     body = ",\n".join(rows)
-    return f"    localparam logic [15:0] {name} [0:{len(values) - 1}] = '{{\n{body}\n    }};\n"
+    return f"    localparam logic [{16 * n - 1}:0] {name} = {{\n{body}\n    }};\n"
 
 
 def render_pkg() -> str:
@@ -55,4 +58,4 @@ def write_all() -> None:
 
 if __name__ == "__main__":
     write_all()
-    print(f"wrote {PKG_PATH} (EXP2_LUT[256], RECIP_LUT[64])")
+    print(f"wrote {PKG_PATH} (EXP2_LUT[256], RECIP_LUT[64], packed)")

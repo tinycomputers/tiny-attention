@@ -1,3 +1,4 @@
+/* verilator lint_off IMPORTSTAR */  // package import at file scope: Yosys rejects it in the module header
 // Tile core for one Q block of up to 32 rows (8 row groups of 4), driven by flash_ctrl or naive_ctrl.
 //
 // Operations (tile_op, see tiny_attn_pkg):
@@ -13,8 +14,8 @@
 // MM1 at c0+7..c0+10, P rows enter MM2 at c0+8..c0+11, PV rows leave at c0+15..c0+18, tile_done at c0+19.
 // tile_start to tile_done is 20 cycles (sim/test_attn_tile.py).
 /* verilator lint_off PINCONNECTEMPTY */  // mm_engine.busy is unused: tile_busy comes from the FSM
+import tiny_attn_pkg::*;
 module attn_tile
-    import tiny_attn_pkg::*;
 (
     input  logic                   clk,
     input  logic                   rst_n,
