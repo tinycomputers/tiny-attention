@@ -1,3 +1,4 @@
+/* verilator lint_off IMPORTSTAR */  // package import at file scope: Yosys rejects it in the module header
 // NAIVE (3-pass safe softmax, FlashAttention paper Algorithm 0) controller. Blocks are 4 rows (one row group).
 // Per block qi, the four passes run in order over the block's K/V tiles kj = 0 .. last (last = qi when causal):
 //   pass 1  load K tile, weight load, OP_NZ: Z tile -> staging -> DMA write to Z[qi][kj]
@@ -8,8 +9,8 @@
 // order produces the same values and the same traffic totals as fixed.naive (which runs pass by pass over all blocks).
 //
 // No K/V overlap in NAIVE (Phase 5 applies it to FLASH only). Buffer 0 is used for every K/V load.
+import tiny_attn_pkg::*;
 module naive_ctrl
-    import tiny_attn_pkg::*;
 (
     input  logic                clk,
     input  logic                rst_n,

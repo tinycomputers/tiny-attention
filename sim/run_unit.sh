@@ -3,6 +3,9 @@
 # disk is small). Usage: bash sim/run_unit.sh   (after `source scripts/env.sh`). End-to-end: sim/run_e2e.sh.
 set -euo pipefail
 cd "$(dirname "$0")"
+# The installed Verilator leaves CFG_CXXFLAGS_PCH_I empty, so some generated models fail to link their precompiled header.
+# -include is the GCC flag that rule needs (see sim/run_fpga.sh).
+export MAKEFLAGS="CFG_CXXFLAGS_PCH_I=-include"
 R=$PWD/../rtl
 ARITH="$R/lut_pkg.sv $R/tiny_attn_pkg.sv $R/pe.sv $R/systolic_array.sv $R/mm_engine.sv $R/row_max.sv $R/scale_mask.sv $R/exp2_unit.sv $R/recip_unit.sv $R/online_softmax.sv $R/o_accumulator.sv $R/normalize.sv"
 TILE="$ARITH $R/attn_tile.sv"

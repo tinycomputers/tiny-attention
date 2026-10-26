@@ -85,6 +85,8 @@ import DocsLayout from "@/components/docs/DocsLayout.astro";
     regression baselines in <code>sim/perf_baseline.json</code>.
   </p>
   <p class="note">
-    The design has not been synthesized for an FPGA yet (Phase 10). The numbers on this site come from simulation.
+    The design synthesizes for an ECP5 FPGA (LFE5U-85F): 40,416 of 83,640 LUT4 positions, 51 of 156 DSP blocks, no block
+    RAM. The timing estimate is 11.5 MHz, below the 25 MHz board clock, so timing is not closed yet. The numbers on the rest
+    of this site come from simulation. See ARCHITECTURE section 15.
   </p>
 </DocsLayout>

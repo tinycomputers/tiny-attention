@@ -1,3 +1,4 @@
+/* verilator lint_off IMPORTSTAR */  // package import at file scope: Yosys rejects it in the module header
 // FLASH-2 controller. Q blocks of G = cfg_qrows/4 row groups, outer loop.
 // Per block: clear state, load Q rows, then for each K/V tile kj up to the block's last tile: load K and V (DMA),
 // load Kᵀ/V into the engines (4 cycles), run every unmasked row group of the block through the tile core.
@@ -10,8 +11,8 @@
 //
 // The overlap-off state sequence is modelled cycle-exactly in sim/golden/schedule.py; the overlap-on numbers are pinned
 // baselines (sim/perf_baseline.json).
+import tiny_attn_pkg::*;
 module flash_ctrl
-    import tiny_attn_pkg::*;
 (
     input  logic                clk,
     input  logic                rst_n,

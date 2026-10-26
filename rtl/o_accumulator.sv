@@ -1,8 +1,9 @@
+/* verilator lint_off IMPORTSTAR */  // package import at file scope: Yosys rejects it in the module header
 // O update for ONE row (combinational), 4 columns. Matches fixed.o_update:
 //   o_new = ((o_old * alpha) >>> 15) + (pv <<< 4)       truncating (floor) shift
 // pv is one row of MM2 = P.V for the current tile (signed, PV_W bits).
+import tiny_attn_pkg::*;
 module o_accumulator
-    import tiny_attn_pkg::*;
 (
     input  logic [4*O_W-1:0]  o_old,
     input  logic [E_W-1:0]    alpha,

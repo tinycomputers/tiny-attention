@@ -1,10 +1,11 @@
+/* verilator lint_off IMPORTSTAR */  // package import at file scope: Yosys rejects it in the module header
 // One online-softmax step for ONE row of a 4-wide S tile (combinational). Matches fixed.online_softmax_step.
 //   m_new = max(m_old, rowmax(z));  alpha = exp2(m_old - m_new)
 //   P_j   = masked ? 0 : round_to_nearest(exp2(z_j - m_new) / 2^7)   (UQ1.15 -> UQ1.8)
 //   l_new = ((l_old * alpha) >> 15) + (sum(P) << 4)
 // A masked z (0x8000) never wins the max and contributes P = 0.
+import tiny_attn_pkg::*;
 module online_softmax
-    import tiny_attn_pkg::*;
 (
     input  logic        [4*Z_W-1:0]   z,       // 4 logits, element j in bits [j*Z_W +: Z_W]
     input  logic signed [Z_W-1:0]     m_old,

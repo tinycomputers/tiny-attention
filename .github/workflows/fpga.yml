@@ -1,0 +1,47 @@
+name: FPGA
+
+on:
+  push:
+    branches: [main]
+    paths: ['rtl/**', 'fpga/**', '.github/workflows/fpga.yml']
+  pull_request:
+    paths: ['rtl/**', 'fpga/**', '.github/workflows/fpga.yml']
+  workflow_dispatch:
+
+jobs:
+  ecp5:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install FPGA tools (YoWASP Yosys and nextpnr, ECP5)
+        run: bash .tools/fpga.sh
+
+      # Synthesis fails on any inferred latch or failed check; nextpnr reports utilization and fmax.
+      - name: Synthesize and place-and-route fpga_top for ECP5 (LFE5U-85F)
+        run: bash fpga/ecp5/synth.sh
+
+      - name: Write the job summary
+        if: always()
+        run: |
+          {
+            echo "## ECP5 (LFE5U-85F, CABGA381) synthesis"
+            echo ""
+            echo '```'
+            cat fpga/ecp5/build/stat.txt 2>/dev/null | grep -E "cells|LUT4|TRELLIS|MULT18|PFUMX|CCU2C|L6MUX" || echo "no statistics"
+            echo '```'
+            echo ""
+            echo "Utilization and fmax (nextpnr, no pin constraints, so fmax is an estimate):"
+            echo '```'
+            python3 -c "import json; r=json.load(open('fpga/ecp5/build/report.json')); print('fmax', r.get('fmax')); print('utilization', {k:v for k,v in r.get('utilization',{}).items() if k in ('TRELLIS_COMB','TRELLIS_FF','MULT18X18D','DP16KD')})" 2>/dev/null || echo "no report"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the netlist out of artifacts
+        if: always()
+        run: rm -f fpga/ecp5/build/fpga_top.json

@@ -41,8 +41,18 @@ On a fresh machine delete the symlinks and run `.tools/setup.sh` and `.tools/ems
 - Phase 9 (docs, landing page, launch): built. Landing page with the animated FLASH schedule, six docs pages with live
   demos, `/og` social card, generated `measured.ts`, README rewritten for the series. Deployment: see the PR and
   ARCHITECTURE §14.
-- Next: Phase 10 (FPGA synthesis, ECP5 for the ULX3S). Blocked here: no yosys / nextpnr / ecppack installed, and the disk
-  had under 1 GB free during Phase 9.
+- Phase 10 (FPGA, ECP5 LFE5U-85F): partly done. UART wrapper (`fpga/ecp5/`), simulated over the UART end to end, synthesis
+  with no latches, utilization and an fmax estimate (11.5 MHz; not closed at 25 MHz). Not done: pin constraints for the
+  ULX3S, a board run, timing closure, block RAM for the memories (combinational reads map to LUT RAM).
+- Next: the Phase 10 follow-ups above, or Phase 9's deployment (blocked: the production deploy was denied by the auto-mode classifier).
+
+## Gotchas found in Phase 10
+- Yosys rejects: unpacked array localparams, package imports in a module header, part-selects of package parameters,
+  width casts with expression widths, and compound async resets. All are fixed in rtl/ (see ARCHITECTURE §15).
+- YoWASP tools only read and write the working directory: outputs go in `fpga/ecp5/build`, inside the project.
+- The installed Verilator leaves `CFG_CXXFLAGS_PCH_I` empty, so a freshly generated model fails to link. `sim/run_fpga.sh`
+  passes `-include` through MAKEFLAGS. Other suites did not hit this.
+- The wrapper's netlist is ~48 MB as JSON. `fpga.yml` deletes it after the run.
 
 ## Gotchas found in Phase 8
 - The debug datapath wires are idle between tiles. The L2 view keeps the last busy clock's values, or the panel shows zeros.

@@ -45,3 +45,4 @@ web/public/spike/
 # Playwright output
 web/test-results/
 web/playwright-report/
+fpga/ecp5/build/
