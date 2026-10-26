@@ -391,3 +391,33 @@ browser checks use `astro build` + `astro preview`.
 needs the files in git. Rebuild with `bash wasm/build.sh` after any RTL or harness change and commit them with it. CI does
 not yet check that the committed files match a fresh build; the wasm workflow's `node wasm/test.mjs` checks behavior, not
 the files.
+
+## 13. Phase 8: the other levels (L1, L2, L4)
+
+The `/app` page has four views over one engine: L1 softmax cell, L2 tile dataflow, L3 schedule (Phase 7), L4 naive vs
+flash.
+
+- **Engine readouts added.** `tileDone` (a one-cycle pulse, from the tile core's `tile_done`) and `getDatapath()` (the
+  MM1 and MM2 weights, activations and partial sums, live). Checked in `wasm/test.mjs`: one completion per FLASH tile, and
+  the running row max never decreases within a row group (keyed on the global row group; the in-block index repeats across
+  Q blocks).
+- **L1 (`SoftmaxCellView`).** The visualizer records the engine's row state at every tile completion. For a chosen row,
+  the table shows each K/V tile's four logits (engine and float), m, α and l. The float reference (`softmax-cell.ts`)
+  uses the same INT8 inputs dequantized, so the difference is fixed-point rounding. A FLASH run is required; NAIVE has no
+  running max.
+- **L2 (`TileView`).** Live wires of MM1 and MM2 and the tile's S, Z, P, m, α, l, O. The values are from the last busy
+  clock of the run so far; between tiles the wires are idle. Stepping through a tile shows the activations streaming.
+- **L4 (`CompareView`).** Two engine instances on the same inputs, each freed after its run. Bars for HBM bytes, busy
+  cycles, tiles and K/V loads (measured). The on-chip footprint, the full-S-matrix size and the tile-core occupancy are
+  formulas, labelled as such. The error panel shows |engine − float| per element for both schedules on one colour scale.
+  The N sweep runs N = 4 to 32 on seeded inputs and plots HBM bytes against N for both schedules.
+
+Gaps against the plan's Phase 8 text:
+- The N sweep uses `runToDone` (one call per run), not a separate `runFast`; the cost is the same.
+- The L2 view is a grid of values, not an animated wire diagram. Each block shows its live values.
+- L1's exp2 split is described in text; the view does not draw the integer and LUT parts separately.
+- "Every level works in light and dark": the tests check that both colour schemes render with a background. Nobody has
+  reviewed the light-mode screenshots yet.
+
+Checks: `pnpm test:e2e` (12 tests, including all four views at 375 px and the light/dark background), `pnpm test` (15),
+`node wasm/test.mjs`, `SEEDS=1 bash sim/run_e2e.sh`, `bash sim/lint.sh`, `pnpm lint`, `pnpm typecheck`, `pnpm build`.

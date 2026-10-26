@@ -58,7 +58,8 @@ module tiny_attn_top
     // K/V buffers: word (buf*4 + row) holds row `row` of buffer `buf` (4 int8 lanes); dbg_kv_sel is the buffer in use
     output logic [2*4*32-1:0]   dbg_kbuf,
     output logic [2*4*32-1:0]   dbg_vbuf,
-    output logic                dbg_kv_sel
+    output logic                dbg_kv_sel,
+    output logic                dbg_tile_done    // one-cycle pulse: a group tile (or NAIVE row group) completed
 );
     // ---- controllers (only the one selected by cfg_naive is started)
     logic                f_busy, f_done, n_busy, n_done;
@@ -117,6 +118,7 @@ module tiny_attn_top
         end
     end
     assign dbg_kv_sel = kv_sel;
+    assign dbg_tile_done = tile_done;
     logic [31:0] tin_words [8];
 
     logic                q_load_valid;

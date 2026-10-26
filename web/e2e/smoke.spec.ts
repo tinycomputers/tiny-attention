@@ -36,7 +36,7 @@ test("step forward and back moves the clock", async ({ page }) => {
 
 test("NAIVE run shows the engine's probability matrix from HBM", async ({ page }) => {
   await openApp(page);
-  await page.getByLabel("Schedule").selectOption("1");
+  await page.getByRole("combobox", { name: /^Schedule/ }).selectOption("1");
   await page.getByRole("button", { name: "Start" }).click();
   await page.getByRole("button", { name: "Run to end" }).click();
 

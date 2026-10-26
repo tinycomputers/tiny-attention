@@ -11,6 +11,7 @@ export interface Snapshot {
   cycles: number;
   tiles: number;
   kvLoads: number;
+  tileDone: boolean; // one-cycle pulse: a tile completed on the last edge
 }
 
 /** Tile-core state of the most recent tile (4 rows of one row group). */
@@ -24,6 +25,16 @@ export interface TileState {
   m: number[];
   l: number[];
   o: number[]; // 16 values, row-major (4 rows x 4 columns)
+}
+
+/** Datapath wires of the two systolic arrays. Index r*4 + c is PE (r, c). */
+export interface Datapath {
+  mm1W: number[]; // Kᵀ weights, int8
+  mm1A: number[]; // Q activations, int8
+  mm1Psum: number[]; // S partial sums, int17
+  mm2W: number[]; // V weights, int8
+  mm2A: number[]; // P activations, uint9
+  mm2Psum: number[]; // P·V partial sums, int18
 }
 
 /** K and V tile buffers. k[(buf*4 + row)*4 + col] is K[row][col] of buffer buf (int8). sel: buffer in use. */
@@ -47,6 +58,7 @@ export interface EngineInstance {
   isDone(): boolean;
   getTile(): TileState;
   getKVBuffers(): KVBuffers;
+  getDatapath(): Datapath;
   delete(): void;
 }
 

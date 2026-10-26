@@ -12,6 +12,17 @@ using namespace emscripten;
 namespace {
 std::vector<int32_t> toI32(const val& arr) { return vecFromJSArray<int32_t>(arr); }
 
+val datapathToJs(const Datapath& d) {
+    val o = val::object();
+    o.set("mm1W", val::array(d.mm1W.begin(), d.mm1W.end()));
+    o.set("mm1A", val::array(d.mm1A.begin(), d.mm1A.end()));
+    o.set("mm1Psum", val::array(d.mm1Psum.begin(), d.mm1Psum.end()));
+    o.set("mm2W", val::array(d.mm2W.begin(), d.mm2W.end()));
+    o.set("mm2A", val::array(d.mm2A.begin(), d.mm2A.end()));
+    o.set("mm2Psum", val::array(d.mm2Psum.begin(), d.mm2Psum.end()));
+    return o;
+}
+
 val kvToJs(const KVBuffers& kv) {
     val o = val::object();
     o.set("sel", kv.sel);
@@ -45,6 +56,7 @@ val snapshotToJs(const Snapshot& s) {
     o.set("cycles", s.cycles);
     o.set("tiles", s.tiles);
     o.set("kvLoads", s.kvLoads);
+    o.set("tileDone", s.tileDone);
     return o;
 }
 }  // namespace
@@ -73,6 +85,7 @@ EMSCRIPTEN_BINDINGS(tiny_attn) {
         }))
         .function("snapshot", optional_override([](TinyAttnSim& self) { return snapshotToJs(self.snapshot()); }))
         .function("isDone", &TinyAttnSim::isDone)
+        .function("getDatapath", optional_override([](TinyAttnSim& self) { return datapathToJs(self.getDatapath()); }))
         .function("getKVBuffers", optional_override([](TinyAttnSim& self) { return kvToJs(self.getKVBuffers()); }))
         .function("getTile", optional_override([](TinyAttnSim& self) { return tileToJs(self.getTile()); }))
         .function("readProbabilities", optional_override([](TinyAttnSim& self) {

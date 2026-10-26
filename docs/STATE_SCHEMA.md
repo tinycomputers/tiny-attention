@@ -20,6 +20,7 @@ the ports for it (`dbg_*` in `tiny_attn_top` and `attn_tile`); only the bindings
 | `cycles` | number | busy-cycle counter (state != idle, DONE included) |
 | `tiles` | number | tile computations (FLASH: group tiles; NAIVE: pass-1 tile pairs) |
 | `kvLoads` | number | K/V tile loads (FLASH: K loads incl. prefetch; NAIVE: one per tile pair) |
+| `tileDone` | boolean | one-cycle pulse: a tile completed on the last edge (FLASH: one per tile; NAIVE: one per tile operation) |
 
 **Counters are final one edge after `done`.** `done` is high during the DONE cycle, and the busy counter increments at the
 end of that cycle. `wasm/test.mjs` takes one more `step()` before reading.
@@ -41,6 +42,7 @@ class TinyAttnSim {
   isDone(): boolean;
   getTile(): TileState;        // tile-core values of the most recent tile (S, Z, P, m, l, alpha, O)
   getKVBuffers(): KVBuffers;   // K and V tile buffers (both), and the buffer in use
+  getDatapath(): Datapath;     // MM1 and MM2 weights, activations and partial sums (live wires; 16 values each)
   readProbabilities(): number[];  // NAIVE: P from HBM, n*n values (UQ1.8)
   delete(): void;
 }
@@ -57,6 +59,12 @@ Input validation throws: `n` must be a multiple of 4 in 4..32, `qrows` one of 4,
 4. `step()` once more, then `readOutput()`.
 
 Multiple instances are independent: each owns its Verilator context. Steps may be interleaved across instances.
+
+## Datapath (`getDatapath`)
+
+Index `r*4 + c` is PE (r, c). `mm1W` (Kᵀ weights) and `mm1A` (Q activations) are int8; `mm1Psum` (S partial sums) is int17.
+`mm2W` (V weights) is int8, `mm2A` (P activations) is uint9, `mm2Psum` (P·V partial sums) is int18. These are the wires at
+the current clock.
 
 ## K/V buffers (`getKVBuffers`)
 

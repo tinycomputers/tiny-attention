@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AttentionHeatmap from "@/components/AttentionHeatmap";
+import CompareView from "@/components/CompareView";
+import LevelTabs, { type LevelDef } from "@/components/LevelTabs";
+import SoftmaxCellView from "@/components/SoftmaxCellView";
+import TileView from "@/components/TileView";
 import HbmMeter from "@/components/HbmMeter";
 import MatrixEditor from "@/components/MatrixEditor";
 import SramPanel from "@/components/SramPanel";
 import { loadEngine } from "@/lib/engine";
 import { PRESETS } from "@/lib/presets";
 import { quantize } from "@/lib/quantize";
+import type { TileSample } from "@/lib/softmax-cell";
 import { attention } from "@/lib/reference";
 import { flashTileOrder, naiveTileOrder, type TileRef } from "@/lib/schedule";
 import { TRAFFIC } from "@/lib/traffic-table";
@@ -13,6 +18,7 @@ import {
   FLASH_STATES,
   NAIVE_STATES,
   type EngineInstance,
+  type Datapath,
   type EngineModule,
   type KVBuffers,
   type Snapshot,
@@ -20,6 +26,15 @@ import {
 } from "@/lib/state-schema";
 
 const MAX_STEPS = 400_000;
+
+type Level = "softmax" | "tile" | "schedule" | "compare";
+
+const LEVELS: LevelDef<Level>[] = [
+  { id: "softmax", label: "L1 Softmax cell" },
+  { id: "tile", label: "L2 Tile dataflow" },
+  { id: "schedule", label: "L3 Schedule" },
+  { id: "compare", label: "L4 Naive vs Flash" },
+];
 
 interface Settings {
   preset: number;
@@ -78,6 +93,14 @@ export default function Visualizer() {
   const [finished, setFinished] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   const simRef = useRef<EngineInstance | null>(null);
+  const [level, setLevel] = useState<Level>("schedule");
+  const [datapath, setDatapath] = useState<Datapath | null>(null);
+  const [samples, setSamples] = useState<TileSample[]>([]);
+  // completed tiles of the current run, in order (filled at each tile_done pulse; cleared when a run restarts)
+  const historyRef = useRef<TileSample[]>([]);
+  const orderRef = useRef<TileRef[]>([]);
+  // datapath wires at the last busy clock of the run so far (between tiles the wires are idle)
+  const lastBusyDatapath = useRef<Datapath | null>(null);
 
   const preset = PRESETS[settings.preset] ?? PRESETS[0];
   const n = preset?.q.length ?? 4;
@@ -95,6 +118,10 @@ export default function Visualizer() {
     setSnap(null);
     setTile(null);
     setKv(null);
+    setDatapath(null);
+    setSamples([]);
+    historyRef.current = [];
+    lastBusyDatapath.current = null;
     setFinished(false);
     setResult(null);
   }, []);
@@ -112,18 +139,35 @@ export default function Visualizer() {
     [n, settings.mode, settings.qrows, settings.causal],
   );
 
-  /** Advance one clock. The DONE edge is followed by one finalizing edge (counters are final after it). */
-  const advance = useCallback((sim: EngineInstance, state: { count: number; finished: boolean }) => {
-    if (state.finished) return null;
-    let s = sim.step();
-    state.count++;
-    if (s.done) {
-      s = sim.step();
-      state.count++;
-      state.finished = true;
-    }
-    return s;
+  orderRef.current = order;
+
+  /** Record a completed tile: its global row group and K/V tile, and the engine's row state at that point. */
+  const observe = useCallback((sim: EngineInstance, s: Snapshot) => {
+    if (s.busy) lastBusyDatapath.current = sim.getDatapath();
+    if (!s.tileDone) return;
+    const ref = orderRef.current[s.tiles - 1];
+    if (!ref) return;
+    const t = sim.getTile();
+    historyRef.current.push({ qi: ref.qi, kj: ref.kj, z: t.z, m: t.m, l: t.l, alpha: t.alpha });
   }, []);
+
+  /** Advance one clock. The DONE edge is followed by one finalizing edge (counters are final after it). */
+  const advance = useCallback(
+    (sim: EngineInstance, state: { count: number; finished: boolean }) => {
+      if (state.finished) return null;
+      let s = sim.step();
+      state.count++;
+      observe(sim, s);
+      if (s.done) {
+        s = sim.step();
+        state.count++;
+        observe(sim, s);
+        state.finished = true;
+      }
+      return s;
+    },
+    [observe],
+  );
 
   /** Publish the engine state to the view. Builds the result once the run has finished. */
   const commit = useCallback(
@@ -133,6 +177,8 @@ export default function Visualizer() {
       setFinished(done);
       setTile(sim.getTile());
       setKv(sim.getKVBuffers());
+      setDatapath(lastBusyDatapath.current);
+      setSamples(historyRef.current.slice());
       if (!done) {
         setResult(null);
         return;
@@ -156,6 +202,8 @@ export default function Visualizer() {
     (target: number) => {
       if (!mod) return;
       simRef.current?.delete();
+      historyRef.current = [];
+      lastBusyDatapath.current = null;
       const qz = quantize(inputs.q, inputs.k, inputs.v);
       const sim = new mod.TinyAttnSim();
       sim.configure(n, settings.qrows, settings.causal, settings.mode, settings.overlap, settings.latency, qz.cfgScale);
@@ -233,7 +281,6 @@ export default function Visualizer() {
     return { bg: "var(--panel)", label: "" };
   };
 
-  const fmt = (v: number, digits = 0) => (Number.isFinite(v) ? v.toFixed(digits) : "-");
 
   if (error) return <p style={{ color: "var(--err)" }}>{error}</p>;
   if (!mod) return <p style={muted}>Loading engine…</p>;
@@ -337,7 +384,12 @@ export default function Visualizer() {
         <HbmMeter read={snap?.hbmRdBytes ?? 0} write={snap?.hbmWrBytes ?? 0} expected={expected} />
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <LevelTabs levels={LEVELS} value={level} onChange={setLevel} />
+
+      <div role="tabpanel" id={`panel-${level}`} aria-labelledby={`tab-${level}`} className="space-y-6">
+        {level === "schedule" && (
+          <>
+            <div className="grid gap-6 lg:grid-cols-2">
         {/* schedule */}
         <section>
           <h2 className="mb-2 text-sm font-semibold">
@@ -368,48 +420,24 @@ export default function Visualizer() {
             {settings.mode === 1 ? " NAIVE passes 2 to 4 reuse these tiles." : ""}
           </p>
         </section>
-
-        {/* current tile */}
-        <section>
-          <h2 className="mb-2 text-sm font-semibold">Current tile values</h2>
-          {tile && tilesStarted > 0 ? (
-            <div className="space-y-3 text-xs tabular-nums">
-              {settings.mode === 0 ? (
-                <>
-                  <p style={muted}>Row group {tile.curGrp} (rows {tile.curGrp * 4}–{tile.curGrp * 4 + 3})</p>
-                  <Grid title="S = Q·Kᵀ (int)" values={tile.s} cols={4} />
-                  <Grid title="Z (log2 logits)" values={tile.z} cols={4} />
-                  <Grid title="P (UQ1.8)" values={tile.p} cols={4} />
-                  <div className="grid grid-cols-3 gap-2">
-                    <Vec title="m" values={tile.m} fmt={(v) => fmt(v)} />
-                    <Vec title="l" values={tile.l} fmt={(v) => fmt(v)} />
-                    <Vec title="α" values={tile.alpha} fmt={(v) => fmt(v)} />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p style={muted}>
-                    NAIVE tiles go through HBM, not the tile core, so the per-element S, Z and P are not shown here.
-                    The row max m and sum l are shown below; the final probabilities are in the heatmap after the run.
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Vec title="m" values={tile.m} fmt={(v) => fmt(v)} />
-                    <Vec title="l" values={tile.l} fmt={(v) => fmt(v)} />
-                  </div>
-                </>
-              )}
-              <Grid title="O (Q8.8 accumulator)" values={tile.o} cols={4} />
             </div>
-          ) : (
-            <p className="text-sm" style={muted}>Press Start, then Step.</p>
-          )}
-        </section>
-      </div>
 
       <section>
         <h2 className="mb-2 text-sm font-semibold">On-chip K/V buffers</h2>
         <SramPanel kv={kv} />
       </section>
+          </>
+        )}
+        {level === "softmax" && (
+          <SoftmaxCellView samples={samples} q={inputs.q} k={inputs.k} causal={settings.causal} labels={labels}
+            naive={settings.mode === 1} />
+        )}
+        {level === "tile" && <TileView datapath={datapath} tile={tile} naive={settings.mode === 1} />}
+        {level === "compare" && (
+          <CompareView mod={mod} q={inputs.q} k={inputs.k} v={inputs.v} causal={settings.causal}
+            qrows={settings.qrows} latency={settings.latency} overlap={settings.overlap} />
+        )}
+      </div>
 
       {/* result */}
       {result && (
@@ -432,18 +460,13 @@ function Grid({ title, values, cols }: { title: string; values: number[]; cols: 
   return (
     <div>
       <div style={muted}>{title}</div>
-      <div className="inline-grid gap-x-3 font-mono" style={{ gridTemplateColumns: `repeat(${cols}, auto)` }}>
-        {rows.flatMap((row, i) => row.map((v, j) => <span key={`${i}-${j}`}>{v}</span>))}
+      <div className="overflow-x-auto">
+        <div className="inline-grid gap-x-3 font-mono" style={{ gridTemplateColumns: `repeat(${cols}, auto)` }}>
+          {rows.flatMap((row, i) =>
+            row.map((v, j) => <span key={`${i}-${j}`}>{Number.isInteger(v) ? v : v.toFixed(4)}</span>),
+          )}
+        </div>
       </div>
-    </div>
-  );
-}
-
-function Vec({ title, values, fmt }: { title: string; values: number[]; fmt: (v: number) => string }) {
-  return (
-    <div>
-      <div style={muted}>{title}</div>
-      <div className="font-mono">{values.map((v) => fmt(v)).join(" ")}</div>
     </div>
   );
 }
