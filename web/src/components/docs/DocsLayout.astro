@@ -1,0 +1,51 @@
+---
+import Layout from "@/layouts/Layout.astro";
+
+interface Props {
+  title: string;
+  description: string;
+  current?: string;
+}
+
+const { title, description, current = "" } = Astro.props;
+const links = [
+  { href: "/docs/what-is-attention", label: "What is attention" },
+  { href: "/docs/online-softmax", label: "Online softmax" },
+  { href: "/docs/flashattention", label: "FlashAttention" },
+  { href: "/docs/fixed-point", label: "Fixed point" },
+  { href: "/docs/architecture", label: "Architecture" },
+  { href: "/docs/verification", label: "Verification" },
+];
+---
+
+<Layout title={`${title} · TinyAttention`} description={description}>
+  <header class="border-b" style="border-color: var(--line)">
+    <nav class="mx-auto flex max-w-3xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 text-sm">
+      <a href="/" class="font-semibold">TinyAttention</a>
+      <a href="/app" style="color: var(--accent)">Visualizer</a>
+      <a href="/docs" style="color: var(--muted)">Docs</a>
+      {links.map((l) => (
+        <a href={l.href} style={`color: ${l.href.endsWith(current) ? "var(--fg)" : "var(--muted)"}`}>{l.label}</a>
+      ))}
+    </nav>
+  </header>
+  <main class="docs mx-auto max-w-3xl space-y-5 px-4 py-10 leading-relaxed">
+    <h1 class="text-3xl font-bold">{title}</h1>
+    <slot />
+  </main>
+</Layout>
+
+<style is:global>
+  .docs h2 { margin-top: 2.5rem; font-size: 1.35rem; font-weight: 600; }
+  .docs h3 { margin-top: 1.5rem; font-size: 1.05rem; font-weight: 600; }
+  .docs p, .docs li { color: var(--fg); }
+  .docs ul { list-style: disc; padding-left: 1.4rem; display: grid; gap: 0.35rem; }
+  .docs code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
+  .docs a { color: var(--accent); text-decoration: underline; }
+  .docs table { display: block; overflow-x: auto; width: 100%; font-size: 0.9rem; border-collapse: collapse; }
+  .docs th, .docs td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .docs th { color: var(--muted); font-weight: 500; }
+  .docs td.num, .docs th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .docs .note { color: var(--muted); font-size: 0.9rem; }
+  .docs .demo { border: 1px solid var(--line); border-radius: 0.5rem; padding: 1rem; background: var(--panel); }
+</style>

@@ -1,0 +1,33 @@
+---
+import DocsLayout from "@/components/docs/DocsLayout.astro";
+import AttentionDemo from "@/components/docs/AttentionDemo";
+---
+
+<DocsLayout title="What is attention" description="Queries, keys and values, the score matrix, and the softmax, with a live float demo." current="what-is-attention">
+  <p>
+    Attention lets each token in a sequence take information from the others. For token <code>i</code> it builds a
+    query vector <code>q_i</code>. Every token <code>j</code> offers a key <code>k_j</code> and a value <code>v_j</code>.
+    The score of <code>j</code> for <code>i</code> is the dot product <code>q_i · k_j</code>, scaled by
+    <code>1/√d</code>. A softmax turns each row of scores into weights that sum to one. The output for token
+    <code>i</code> is the weighted sum of the values.
+  </p>
+  <p>In matrix form, with <code>N</code> tokens of dimension <code>d</code>:</p>
+  <p><code>O = softmax(Q Kᵀ / √d) V</code></p>
+  <p>
+    The middle term, <code>S = Q Kᵀ</code>, is an <code>N × N</code> matrix. For a 2,048-token context that is about four
+    million scores for every head. Storing it is what makes naive attention expensive in memory, and it is the reason
+    FlashAttention exists.
+  </p>
+  <h2>Causal masks</h2>
+  <p>
+    In a language model, token <code>i</code> must not see later tokens. A causal mask sets the scores for <code>j &gt; i</code>
+    to minus infinity before the softmax, so their weights are zero. The engine has a causal mode; with it, half of the
+    score matrix is never computed.
+  </p>
+  <h2>Try it</h2>
+  <p class="note">
+    The demo uses the float reference, not the engine. Pick a preset and a query token. In the toy sentence, the pronoun "it" gives
+    "cat" about 0.66 of its weight and "mouse" about 0.15.
+  </p>
+  <AttentionDemo client:only="react" />
+</DocsLayout>

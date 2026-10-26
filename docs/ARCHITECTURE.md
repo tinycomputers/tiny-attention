@@ -421,3 +421,25 @@ Gaps against the plan's Phase 8 text:
 
 Checks: `pnpm test:e2e` (12 tests, including all four views at 375 px and the light/dark background), `pnpm test` (15),
 `node wasm/test.mjs`, `SEEDS=1 bash sim/run_e2e.sh`, `bash sim/lint.sh`, `pnpm lint`, `pnpm typecheck`, `pnpm build`.
+
+## 14. Phase 9: docs, landing page, launch
+
+- **Landing page** (`/`): the hero animates the FLASH schedule for N = 16 on a causal mask (pure React, no engine), with
+  the three claims the site makes and links to the visualizer and the docs. Respects `prefers-reduced-motion`.
+- **Docs** (`/docs/*`, six pages, plus an index). Each page has a live demo of what it explains:
+  - *What is attention*: float attention for a chosen preset row (the reference, not the engine).
+  - *Online softmax*: a FLASH run of the toy sentence recorded tile by tile (`web/src/lib/record.ts`), shown by the L1 view.
+  - *FlashAttention*: HBM bytes and tile counts for FLASH and NAIVE from the generated traffic table.
+  - *Fixed point*: an INT8 quantizer for one Q row and one K row, with the folded cfg_scale in hex; the formats table;
+    measured error from the generated `measured.ts`.
+  - *Architecture*: a static block diagram of the RTL.
+  - *Verification*: each check and its command, with the measured tables.
+- **Generated numbers.** `sim/golden/export_web_data.py` writes `web/src/lib/measured.ts`: the per-preset error (golden
+  model), the recorded 1000-seed study (rows parsed from `study_results_1000seeds.txt`), and the N = 32 cycle baselines
+  (from `sim/perf_baseline.json`). `pytest sim/golden` fails if any generated file is stale.
+- **Social card and screenshots.** `/og` is a 1200 × 630 card; `web/scripts/capture-assets.mjs` captures it to
+  `web/public/og.png` and the visualizer to `docs/media/visualizer.png`. The card is in the page's `og:image` meta tags.
+- **Tests.** Playwright covers every page (no console errors, status 200, the islands render, the quantizer and traffic
+  demos respond) and every page at 375 px without horizontal scroll. Tables scroll inside their own box on phones.
+- **Not in this phase:** FPGA numbers (Phase 10). The README and the Verification page say so.
+

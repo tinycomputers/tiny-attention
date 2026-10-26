@@ -1,0 +1,105 @@
+---
+import DocsLayout from "@/components/docs/DocsLayout.astro";
+import { MEASURED } from "@/lib/measured";
+
+const seq = MEASURED.study.sequence;
+---
+
+<DocsLayout title="Verification" description="What the engine is tested against, how the tests run, and the measured results." current="verification">
+  <p>
+    Every claim on this site is checked by a test in the repository. The golden model is the reference: a Python program
+    with the same integer formats, which the RTL is compared against on every run.
+  </p>
+
+  <h2>What is checked</h2>
+  <table>
+    <thead><tr><th>Layer</th><th>What it checks</th><th>How it runs</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Unit blocks</td>
+        <td>Each arithmetic block against the golden model, including exhaustive sweeps of the exp2 and reciprocal inputs, and the DMA burst timing cycle by cycle.</td>
+        <td><code>bash sim/run_unit.sh</code> (cocotb with Verilator)</td>
+      </tr>
+      <tr>
+        <td>Tile core</td>
+        <td>One tile against the golden trace, including causal masking and multi-group blocks.</td>
+        <td><code>sim/test_attn_tile.py</code></td>
+      </tr>
+      <tr>
+        <td>Engine, end to end</td>
+        <td>Output bit for bit; HBM read and write bytes; tile count; K/V loads; busy cycles against the closed-form model. Every sequence length 4 to 32, causal and not, all block sizes, both schedules, overlap on and off, and random HBM latency. Random seeds on top.</td>
+        <td><code>SEEDS=200 bash sim/run_e2e.sh</code></td>
+      </tr>
+      <tr>
+        <td>Golden model</td>
+        <td>Quantization, exp2 and reciprocal, both schedules against float attention, traffic formulas, presets, and that the committed LUT table matches its generator.</td>
+        <td><code>pytest sim/golden</code></td>
+      </tr>
+      <tr>
+        <td>Lint</td>
+        <td>Verilator with all warnings on, for every module and the full design.</td>
+        <td><code>bash sim/lint.sh</code></td>
+      </tr>
+      <tr>
+        <td>WebAssembly</td>
+        <td>The compiled module, on golden fixtures for each schedule: output, bytes, tiles, cycles, the last tile's state, probabilities, and the K/V buffer in use.</td>
+        <td><code>node wasm/test.mjs</code></td>
+      </tr>
+      <tr>
+        <td>Web app</td>
+        <td>Quantization and tile order against the shared fixtures, the visualizer and each docs page in a real browser, at phone width and in both colour schemes.</td>
+        <td><code>pnpm test</code>, <code>pnpm test:e2e</code></td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="note">All of these run in GitHub Actions on every pull request. The workflows are <code>rtl.yml</code>, <code>wasm.yml</code> and <code>web.yml</code>.</p>
+
+  <h2>Output error</h2>
+  <p>Maximum error of the engine's output against float attention, per preset, in float units. These numbers come from the golden model, which the RTL matches bit for bit.</p>
+  <table>
+    <thead><tr><th>Preset</th><th class="num">N</th><th>Causal</th><th class="num">Max error</th></tr></thead>
+    <tbody>
+      {MEASURED.presetErrors.map((r) => (
+        <tr><td>{r.name}</td><td class="num">{r.n}</td><td>{r.causal ? "yes" : "no"}</td><td class="num">{r.maxErr.toFixed(4)}</td></tr>
+      ))}
+    </tbody>
+  </table>
+
+  <h2>Accuracy study</h2>
+  <p>
+    The recorded study (<code>sim/golden/study_results_1000seeds.txt</code>), in V units (one int8 step of V). <code>dp</code> is the datapath
+    error on the INT8 inputs. <code>tot</code> is the error against float attention on the original inputs.
+  </p>
+  <table>
+    <thead><tr><th>N</th><th>Causal</th><th class="num">dp max</th><th class="num">dp mean</th><th class="num">tot max</th><th class="num">tot mean</th></tr></thead>
+    <tbody>
+      {seq.map((r) => (
+        <tr>
+          <td>{r.n}</td><td>{r.causal ? "yes" : "no"}</td>
+          <td class="num">{r.dpMax.toFixed(3)}</td><td class="num">{r.dpMean.toFixed(4)}</td>
+          <td class="num">{r.totMax.toFixed(3)}</td><td class="num">{r.totMean.toFixed(4)}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+
+  <h2>Cycles at N = 32</h2>
+  <p>
+    Busy cycles at N = 32, non-causal, with 10 cycles of HBM latency. The sequential FLASH rows match the closed-form
+    schedule exactly. The overlap and NAIVE rows are pinned baselines from the RTL, and the test fails if they change.
+  </p>
+  <table>
+    <thead><tr><th>Configuration</th><th class="num">Busy cycles</th></tr></thead>
+    <tbody>
+      {MEASURED.perfN32.map((r) => (
+        <tr><td>{r.label}</td><td class="num">{r.cycles}</td></tr>
+      ))}
+    </tbody>
+  </table>
+
+  <h2>Not verified yet</h2>
+  <ul>
+    <li>Synthesis for an FPGA. The timing and area numbers are not measured yet (Phase 10).</li>
+    <li>Real hardware. Everything here runs in simulation or in WebAssembly.</li>
+  </ul>
+</DocsLayout>

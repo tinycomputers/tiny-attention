@@ -1,14 +1,47 @@
 # TinyAttention
 
-A real, synthesizable **FlashAttention engine** in SystemVerilog, compiled to WebAssembly and running live
-in your browser: online softmax with a running max and sum, SRAM tiles filling and emptying, and standard
-vs FlashAttention memory traffic side by side.
+A synthesizable **FlashAttention engine** in SystemVerilog, verified bit-exact against a golden model, compiled to
+WebAssembly, and running live in your browser.
+
+**Live:** https://tiny-attention.vercel.app
+
+![The visualizer running one FLASH pass](docs/media/visualizer.png)
 
 Fourth project in the series after [tiny-gpu](https://github.com/deaneeth/tiny-gpu),
-[tiny-tpu](https://github.com/deaneeth/tiny-tpu) and tiny-cpu. Same rule as the others: nothing on screen is
-faked; every value comes from a `dbg_*` port on the compiled RTL.
+[tiny-tpu](https://github.com/deaneeth/tiny-tpu) and tiny-cpu. Same rule as the others: nothing on screen is faked.
+Every value comes from a debug port on the compiled RTL, or from the golden model the RTL is checked against.
 
-**Status:** Phases 0-8 done: the engine (FLASH, NAIVE, K/V overlap) is bit-exact against the golden model and compiled to WebAssembly. The browser visualizer at `/app` has four views (softmax cell, tile dataflow, schedule, naive vs flash with an N sweep) with editable inputs, K/V buffers, HBM traffic against the model, and 12 Playwright tests. Next: the landing page and the documentation pages. See [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.
+## What it does
+
+Attention computes `softmax(Q Kᵀ / √d) V`. The score matrix is N × N, and storing it is what makes standard attention
+expensive in memory. FlashAttention computes the output one tile at a time with an online softmax, so the matrix never
+exists in memory. This engine implements that schedule, plus the standard three-pass schedule for comparison, with
+optional overlap of the K/V loads with compute.
+
+## Verification
+
+| What | Result |
+|---|---|
+| Engine vs golden model, end to end | Output, HBM bytes, tile count, K/V loads and busy cycles match on every run. Every sequence length 4 to 32, causal and not, every block size, both schedules, overlap on and off, random HBM latency, 200 seeds. |
+| Exhaustive unit coverage | exp2 is checked on every input in its range; reciprocal on every mantissa. DMA burst timing is pinned cycle by cycle. |
+| Output error vs float attention | Max 0.0028 to 0.0260 across the six presets (N = 12 to 16), in float units. The recorded 1000-seed study is in `sim/golden/study_results_1000seeds.txt`. |
+| HBM traffic at N = 32 | Non-causal: FLASH 2432 B (4-row blocks) or 896 B (16-row blocks), NAIVE 12672 B. Causal: FLASH 1536 B or 768 B, NAIVE 7296 B. |
+| WebAssembly | The compiled module, on golden fixtures for each schedule, matches the same quantities. 83 KB gzipped. |
+| Web app | Browser tests of every page, the visualizer at phone width and in both colour schemes. |
+| FPGA | Not yet synthesized (Phase 10). No timing or area numbers are claimed. |
+
+Every row is a test in the repository, run by GitHub Actions on each pull request. The docs page
+[Verification](https://tiny-attention.vercel.app/docs/verification) lists each check and its numbers.
+
+## Repository
+
+```
+rtl/            SystemVerilog: arithmetic blocks, tile core, memory, controllers, top level
+sim/            cocotb unit and end-to-end tests, the golden model (sim/golden), lint and run scripts
+wasm/           Verilator + Emscripten build, the C++ harness, and the Node test over golden fixtures
+web/            Astro + React site: the visualizer at /app, the docs, and the Vitest and Playwright tests
+docs/           Architecture, the plan, the state schema, and the media for this README
+```
 
 ## Quick start
 
@@ -17,10 +50,32 @@ bash .tools/setup.sh && bash .tools/emsdk.sh      # Verilator 5.036 + Emscripten
 python3 -m venv .venv && .venv/bin/pip install -r sim/requirements.txt
 source scripts/env.sh
 
-bash wasm/build.sh && node wasm/test.mjs              # engine WASM + golden fixtures
-bash wasm/spike/build.sh && node wasm/spike/test.mjs   # toolchain spike
-cd web && pnpm install && pnpm dev                     # open /spike
+bash sim/lint.sh                                   # Verilator -Wall on every module
+bash sim/run_unit.sh                               # cocotb unit suites
+SEEDS=200 bash sim/run_e2e.sh                      # engine vs golden, end to end
+pytest sim/golden -q                               # golden model, fixtures, generated tables
+
+bash wasm/build.sh && node wasm/test.mjs           # WebAssembly engine + golden fixtures
+
+cd web && pnpm install && pnpm dev                 # the site (dev server; see note below)
+pnpm build && pnpm test:e2e                        # production build and browser tests
 ```
 
+Note: `astro dev` hangs without output in some environments. `pnpm build` followed by any static file server over
+`web/dist` works.
+
+## Docs
+
+Six pages with live demos: [what attention computes](https://tiny-attention.vercel.app/docs/what-is-attention),
+[the online softmax](https://tiny-attention.vercel.app/docs/online-softmax),
+[the FlashAttention schedule](https://tiny-attention.vercel.app/docs/flashattention),
+[fixed-point formats and error](https://tiny-attention.vercel.app/docs/fixed-point),
+[the architecture](https://tiny-attention.vercel.app/docs/architecture), and
+[verification](https://tiny-attention.vercel.app/docs/verification).
+
+The plan and the status of each phase are in [`docs/PLAN.md`](docs/PLAN.md). The architecture, with the measured
+schedule and traffic models, is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
 ## License
+
 MIT
