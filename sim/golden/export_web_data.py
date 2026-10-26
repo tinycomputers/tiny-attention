@@ -151,7 +151,8 @@ def preset_errors():
         res = fixed.flash(qz, n, p["causal"], qblock=min(4, n))
         out_f = fixed.dequant_out(res, qz)
         ref, _ = attention(q, k, v, p["causal"])
-        out.append(dict(name=p["name"], n=n, causal=bool(p["causal"]), maxErr=float(np.max(np.abs(out_f - ref)))))
+        # six decimals: the last bits of a float64 sum depend on the BLAS build, and the freshness test must not
+        out.append(dict(name=p["name"], n=n, causal=bool(p["causal"]), maxErr=round(float(np.max(np.abs(out_f - ref))), 6)))
     return out
 
 

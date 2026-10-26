@@ -111,37 +111,37 @@ export const MEASURED = {
    "name": "toy_sentence",
    "n": 12,
    "causal": true,
-   "maxErr": 0.004894227790511407
+   "maxErr": 0.004894
   },
   {
    "name": "previous_token",
    "n": 16,
    "causal": true,
-   "maxErr": 0.010518908053282039
+   "maxErr": 0.010519
   },
   {
    "name": "attention_sink",
    "n": 16,
    "causal": true,
-   "maxErr": 0.02534997660881233
+   "maxErr": 0.02535
   },
   {
    "name": "uniform",
    "n": 16,
    "causal": false,
-   "maxErr": 0.002772959153543364
+   "maxErr": 0.002773
   },
   {
    "name": "self",
    "n": 16,
    "causal": false,
-   "maxErr": 0.02599748051857198
+   "maxErr": 0.025997
   },
   {
    "name": "random",
    "n": 16,
    "causal": false,
-   "maxErr": 0.016339162359343296
+   "maxErr": 0.016339
   }
  ]
 } as const;
