@@ -447,7 +447,7 @@ The estimates assume one person part-time, at tiny-cpu's pace.
 - `harness.cpp`, `bindings.cpp`, `build.sh`, `STATE_SCHEMA.md`, `test.mjs` with golden fixtures.
 - **Exit:** `wasm.yml` is green; the size budget is met; two instances run independently in Node.
 
-### Phase 7: Core UI + L3 Schedule (2 weeks) — PARTIAL (visualizer built; see ARCHITECTURE §12 for what remains)
+### Phase 7: Core UI + L3 Schedule (2 weeks) ✅ DONE (see ARCHITECTURE §12)
 - `useTinyAttn`, `Controls`, `MatrixEditor`, presets, `quantize.ts`, `AttentionHeatmap`, `SramPanel`,
   `HbmMeter`, and **L3 Schedule first**.
 - **Exit:** pick a preset, step forward and back, and watch tiles, buffers and bytes update; the Playwright smoke test passes.

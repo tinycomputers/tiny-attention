@@ -54,7 +54,11 @@ module tiny_attn_top
     output logic [16*S_W-1:0]   dbg_mm1_psum,
     output logic [16*Q_W-1:0]   dbg_mm2_w,
     output logic [16*P_W-1:0]   dbg_mm2_a,
-    output logic [16*PV_W-1:0]  dbg_mm2_psum
+    output logic [16*PV_W-1:0]  dbg_mm2_psum,
+    // K/V buffers: word (buf*4 + row) holds row `row` of buffer `buf` (4 int8 lanes); dbg_kv_sel is the buffer in use
+    output logic [2*4*32-1:0]   dbg_kbuf,
+    output logic [2*4*32-1:0]   dbg_vbuf,
+    output logic                dbg_kv_sel
 );
     // ---- controllers (only the one selected by cfg_naive is started)
     logic                f_busy, f_done, n_busy, n_done;
@@ -106,6 +110,13 @@ module tiny_attn_top
     // ---- K/V double buffers and the NAIVE tile input (Z or P tile: 8 words, 4 rows x 4 lanes x 16 bit)
     logic [31:0] kreg [2][4];
     logic [31:0] vreg [2][4];
+    for (genvar b = 0; b < 2; b++) begin : g_kvdbg
+        for (genvar r = 0; r < 4; r++) begin : g_row
+            assign dbg_kbuf[(b*4+r)*32 +: 32] = kreg[b][r];
+            assign dbg_vbuf[(b*4+r)*32 +: 32] = vreg[b][r];
+        end
+    end
+    assign dbg_kv_sel = kv_sel;
     logic [31:0] tin_words [8];
 
     logic                q_load_valid;

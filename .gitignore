@@ -40,3 +40,7 @@ web/public/spike/
 # Agent scratch
 .agents/
 .claude/
+
+# Playwright output
+web/test-results/
+web/playwright-report/

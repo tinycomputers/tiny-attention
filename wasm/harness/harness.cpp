@@ -229,3 +229,17 @@ std::vector<int32_t> TinyAttnSim::readProbabilities() {
     }
     return p;
 }
+
+KVBuffers TinyAttnSim::getKVBuffers() const {
+    KVBuffers kv;
+    kv.sel = top_->dbg_kv_sel ? 1 : 0;
+    const uint32_t* kw = wordsOf(top_->dbg_kbuf);
+    const uint32_t* vw = wordsOf(top_->dbg_vbuf);
+    for (int word = 0; word < 8; ++word) {
+        for (int col = 0; col < 4; ++col) {
+            kv.k.push_back(static_cast<int32_t>(signExtend(bitsAt(kw, word * 32 + col * 8, 8), 8)));
+            kv.v.push_back(static_cast<int32_t>(signExtend(bitsAt(vw, word * 32 + col * 8, 8), 8)));
+        }
+    }
+    return kv;
+}

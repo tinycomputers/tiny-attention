@@ -37,6 +37,14 @@ struct TileState {
     std::vector<int32_t> o;      // 16, 26 bit signed
 };
 
+// K and V tile buffers. k[(buf*4 + row)*4 + col] is K[row][col] of buffer buf (int8, sign-extended); same for v.
+// sel is the buffer the engine is using for the current tile.
+struct KVBuffers {
+    int sel;
+    std::vector<int32_t> k;  // 32
+    std::vector<int32_t> v;  // 32
+};
+
 class TinyAttnSim {
 public:
     TinyAttnSim();
@@ -62,6 +70,7 @@ public:
     Snapshot snapshot() const;
     bool isDone() const;
     TileState getTile() const;
+    KVBuffers getKVBuffers() const;
     // P tiles written by a NAIVE run (HBM words 768..): n x n probabilities (UQ1.8), row-major. Requires n known.
     std::vector<int32_t> readProbabilities();
 

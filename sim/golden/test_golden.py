@@ -277,3 +277,4 @@ def test_web_data_fresh():
 
     assert ewd.WEB_PRESETS.read_text() == ewd.presets_ts(ewd.preset_entries()), "presets.ts is stale"
     assert ewd.QUANT_CASES.read_text() == json.dumps(ewd.quant_cases()) + "\n", "quantize_cases.json is stale"
+    assert ewd.TRAFFIC_TS.read_text() == ewd.traffic_ts(ewd.traffic_entries()), "traffic-table.ts is stale"

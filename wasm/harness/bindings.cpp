@@ -12,6 +12,14 @@ using namespace emscripten;
 namespace {
 std::vector<int32_t> toI32(const val& arr) { return vecFromJSArray<int32_t>(arr); }
 
+val kvToJs(const KVBuffers& kv) {
+    val o = val::object();
+    o.set("sel", kv.sel);
+    o.set("k", val::array(kv.k.begin(), kv.k.end()));
+    o.set("v", val::array(kv.v.begin(), kv.v.end()));
+    return o;
+}
+
 val tileToJs(const TileState& t) {
     val o = val::object();
     o.set("curGrp", t.curGrp);
@@ -65,6 +73,7 @@ EMSCRIPTEN_BINDINGS(tiny_attn) {
         }))
         .function("snapshot", optional_override([](TinyAttnSim& self) { return snapshotToJs(self.snapshot()); }))
         .function("isDone", &TinyAttnSim::isDone)
+        .function("getKVBuffers", optional_override([](TinyAttnSim& self) { return kvToJs(self.getKVBuffers()); }))
         .function("getTile", optional_override([](TinyAttnSim& self) { return tileToJs(self.getTile()); }))
         .function("readProbabilities", optional_override([](TinyAttnSim& self) {
             auto p = self.readProbabilities();

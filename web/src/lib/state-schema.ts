@@ -26,6 +26,13 @@ export interface TileState {
   o: number[]; // 16 values, row-major (4 rows x 4 columns)
 }
 
+/** K and V tile buffers. k[(buf*4 + row)*4 + col] is K[row][col] of buffer buf (int8). sel: buffer in use. */
+export interface KVBuffers {
+  sel: number;
+  k: number[]; // 32
+  v: number[]; // 32
+}
+
 export interface EngineInstance {
   reset(): void;
   configure(n: number, qrows: number, causal: boolean, mode: number, overlap: boolean, latency: number, scale: number): void;
@@ -39,6 +46,7 @@ export interface EngineInstance {
   snapshot(): Snapshot;
   isDone(): boolean;
   getTile(): TileState;
+  getKVBuffers(): KVBuffers;
   delete(): void;
 }
 

@@ -1,14 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AttentionHeatmap from "@/components/AttentionHeatmap";
+import HbmMeter from "@/components/HbmMeter";
+import MatrixEditor from "@/components/MatrixEditor";
+import SramPanel from "@/components/SramPanel";
 import { loadEngine } from "@/lib/engine";
 import { PRESETS } from "@/lib/presets";
 import { quantize } from "@/lib/quantize";
 import { attention } from "@/lib/reference";
 import { flashTileOrder, naiveTileOrder, type TileRef } from "@/lib/schedule";
+import { TRAFFIC } from "@/lib/traffic-table";
 import {
   FLASH_STATES,
   NAIVE_STATES,
   type EngineInstance,
   type EngineModule,
+  type KVBuffers,
   type Snapshot,
   type TileState,
 } from "@/lib/state-schema";
@@ -24,10 +30,17 @@ interface Settings {
   latency: number;
 }
 
+interface Inputs {
+  q: number[][];
+  k: number[][];
+  v: number[][];
+}
+
 interface Result {
   out: number[][];
   maxErr: number;
-  probs: number[][] | null;
+  probs: number[][];
+  probsSource: "engine" | "float";
 }
 
 const panel = { background: "var(--panel)" } as const;
@@ -37,6 +50,12 @@ function matrix(flat: number[], rows: number, cols: number): number[][] {
   const m: number[][] = [];
   for (let r = 0; r < rows; r++) m.push(flat.slice(r * cols, (r + 1) * cols));
   return m;
+}
+
+function maxAbsDiff(a: number[][], b: number[][]): number {
+  let worst = 0;
+  a.forEach((row, i) => row.forEach((v, c) => (worst = Math.max(worst, Math.abs(v - (b[i]?.[c] ?? 0))))));
+  return worst;
 }
 
 export default function Visualizer() {
@@ -50,9 +69,12 @@ export default function Visualizer() {
     qrows: 4,
     latency: 10,
   });
+  // Edited Q/K/V; null means the preset's values.
+  const [edits, setEdits] = useState<Inputs | null>(null);
   const [stepCount, setStepCount] = useState(0);
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [tile, setTile] = useState<TileState | null>(null);
+  const [kv, setKv] = useState<KVBuffers | null>(null);
   const [finished, setFinished] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   const simRef = useRef<EngineInstance | null>(null);
@@ -60,19 +82,35 @@ export default function Visualizer() {
   const preset = PRESETS[settings.preset] ?? PRESETS[0];
   const n = preset?.q.length ?? 4;
   const labels: string[] = preset?.labels ?? [];
+  const inputs: Inputs = useMemo(
+    () => edits ?? { q: preset?.q ?? [], k: preset?.k ?? [], v: preset?.v ?? [] },
+    [edits, preset],
+  );
   const qrowOptions = [4, 8, 16, 32].filter((q) => q <= n);
+
+  const reset = useCallback(() => {
+    simRef.current?.delete();
+    simRef.current = null;
+    setStepCount(0);
+    setSnap(null);
+    setTile(null);
+    setKv(null);
+    setFinished(false);
+    setResult(null);
+  }, []);
 
   useEffect(() => {
     loadEngine().then(setMod).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
     return () => simRef.current?.delete();
   }, []);
 
-  const order: TileRef[] = useMemo(() => {
-    if (!preset) return [];
-    return settings.mode === 0
-      ? flashTileOrder(n, settings.qrows, settings.causal)
-      : naiveTileOrder(n, settings.causal);
-  }, [preset, n, settings.mode, settings.qrows, settings.causal]);
+  const order: TileRef[] = useMemo(
+    () =>
+      settings.mode === 0
+        ? flashTileOrder(n, settings.qrows, settings.causal)
+        : naiveTileOrder(n, settings.causal),
+    [n, settings.mode, settings.qrows, settings.causal],
+  );
 
   /** Advance one clock. The DONE edge is followed by one finalizing edge (counters are final after it). */
   const advance = useCallback((sim: EngineInstance, state: { count: number; finished: boolean }) => {
@@ -87,35 +125,38 @@ export default function Visualizer() {
     return s;
   }, []);
 
-  /** Publish the state of the engine to the view. Builds the result once the run has finished. */
+  /** Publish the engine state to the view. Builds the result once the run has finished. */
   const commit = useCallback(
     (sim: EngineInstance, count: number, done: boolean, last: Snapshot) => {
       setStepCount(count);
       setSnap(last);
       setFinished(done);
       setTile(sim.getTile());
-      if (!done || !preset) {
+      setKv(sim.getKVBuffers());
+      if (!done) {
         setResult(null);
         return;
       }
-      const qz = quantize(preset.q, preset.k, preset.v);
+      const qz = quantize(inputs.q, inputs.k, inputs.v);
       const out = matrix(sim.readOutput(), n, 4).map((row) => row.map((v) => (v / 256) * qz.sv));
-      const ref = attention(preset.q, preset.k, preset.v, settings.causal).out;
-      let maxErr = 0;
-      out.forEach((row, i) => row.forEach((v, c) => (maxErr = Math.max(maxErr, Math.abs(v - (ref[i]?.[c] ?? 0))))));
-      const probs =
-        settings.mode === 1 ? matrix(sim.readProbabilities(), n, n).map((row) => row.map((v) => v / 256)) : null;
-      setResult({ out, maxErr, probs });
+      const ref = attention(inputs.q, inputs.k, inputs.v, settings.causal);
+      const naive = settings.mode === 1;
+      setResult({
+        out,
+        maxErr: maxAbsDiff(out, ref.out),
+        probs: naive ? matrix(sim.readProbabilities(), n, n).map((row) => row.map((v) => v / 256)) : ref.probs,
+        probsSource: naive ? "engine" : "float",
+      });
     },
-    [preset, n, settings],
+    [inputs, n, settings],
   );
 
   /** Rebuild the run from reset and advance `target` clocks. Used by Start and by step-back. */
   const seek = useCallback(
     (target: number) => {
-      if (!mod || !preset) return;
+      if (!mod) return;
       simRef.current?.delete();
-      const qz = quantize(preset.q, preset.k, preset.v);
+      const qz = quantize(inputs.q, inputs.k, inputs.v);
       const sim = new mod.TinyAttnSim();
       sim.configure(n, settings.qrows, settings.causal, settings.mode, settings.overlap, settings.latency, qz.cfgScale);
       sim.loadQKV(qz.q, qz.k, qz.v);
@@ -129,7 +170,7 @@ export default function Visualizer() {
       }
       commit(sim, state.count, state.finished, last);
     },
-    [mod, preset, n, settings, advance, commit],
+    [mod, inputs, n, settings, advance, commit],
   );
 
   const stepOnce = () => {
@@ -150,19 +191,26 @@ export default function Visualizer() {
     commit(sim, state.count, state.finished, last ?? sim.snapshot());
   };
 
-  const reset = () => {
-    simRef.current?.delete();
-    simRef.current = null;
-    setStepCount(0);
-    setSnap(null);
-    setTile(null);
-    setFinished(false);
-    setResult(null);
-  };
-
   const setPreset = (i: number) => {
     reset();
-    setSettings((s) => ({ ...s, preset: i, causal: PRESETS[i]?.causal ?? false, qrows: Math.min(s.qrows, PRESETS[i]?.q.length ?? 4) }));
+    setEdits(null);
+    setSettings((s) => ({
+      ...s,
+      preset: i,
+      causal: PRESETS[i]?.causal ?? false,
+      qrows: Math.min(s.qrows, PRESETS[i]?.q.length ?? 4),
+    }));
+  };
+
+  const editValue = (name: keyof Inputs, row: number, col: number, value: number) => {
+    reset();
+    setEdits((prev) => {
+      const base = prev ?? inputs;
+      const copy = base[name].map((r) => r.slice());
+      const target = copy[row];
+      if (target) target[col] = value;
+      return { ...base, [name]: copy };
+    });
   };
 
   // ---- derived view
@@ -172,13 +220,16 @@ export default function Visualizer() {
   order.forEach((t, i) => orderIndex.set(`${t.qi},${t.kj}`, i));
   const stateNames = settings.mode === 0 ? FLASH_STATES : NAIVE_STATES;
   const stateName = snap ? (stateNames[snap.ctrlState] ?? `#${snap.ctrlState}`) : "not started";
+  const qblock = settings.mode === 1 ? 4 : settings.qrows;
+  const expected =
+    TRAFFIC[`${settings.mode === 1 ? "NAIVE" : "FLASH"}:${n}:${settings.causal ? 1 : 0}:${qblock}`] ?? null;
+
   const cellClass = (qi: number, kj: number) => {
     if (settings.causal && kj > qi) return { bg: "transparent", label: "masked" };
     const idx = orderIndex.get(`${qi},${kj}`);
     if (idx === undefined) return { bg: "transparent", label: "" };
-    if (idx < tilesStarted - 1) return { bg: "var(--ok)", label: "done" };
     if (idx === tilesStarted - 1 && snap?.busy) return { bg: "var(--accent)", label: "in flight" };
-    if (idx === tilesStarted - 1) return { bg: "var(--ok)", label: "done" };
+    if (idx < tilesStarted) return { bg: "var(--ok)", label: "done" };
     return { bg: "var(--panel)", label: "" };
   };
 
@@ -236,6 +287,22 @@ export default function Visualizer() {
         </label>
       </div>
 
+      <details className="rounded p-3 text-sm" style={panel}>
+        <summary className="cursor-pointer">
+          Edit Q, K and V {edits ? "(edited)" : `(preset: ${preset?.name ?? ""})`}
+        </summary>
+        <div className="mt-3 space-y-4">
+          <p style={muted} className="text-xs">
+            Values are floats; the browser quantizes them to INT8 the same way as the golden model. Editing resets the run.
+          </p>
+          <MatrixEditor title="Q" values={inputs.q} onChange={(r, c, x) => editValue("q", r, c, x)} />
+          <MatrixEditor title="K" values={inputs.k} onChange={(r, c, x) => editValue("k", r, c, x)} />
+          <MatrixEditor title="V" values={inputs.v} onChange={(r, c, x) => editValue("v", r, c, x)} />
+          <button className="rounded px-3 py-1" style={panel} disabled={!edits}
+            onClick={() => { reset(); setEdits(null); }}>Reset to preset</button>
+        </div>
+      </details>
+
       <div className="flex flex-wrap gap-2 text-sm">
         <button className="rounded px-3 py-1" style={panel} onClick={() => seek(0)}>Start</button>
         <button className="rounded px-3 py-1" style={panel} disabled={stepCount === 0}
@@ -250,20 +317,25 @@ export default function Visualizer() {
       {/* status */}
       <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
         <div className="rounded p-3" style={panel}>
-          <div style={muted}>Clock</div><div className="text-lg tabular-nums">{stepCount}</div>
+          <div style={muted}>Clock</div><div data-testid="clock" className="text-lg tabular-nums">{stepCount}</div>
         </div>
         <div className="rounded p-3" style={panel}>
           <div style={muted}>Controller</div><div className="font-mono">{stateName}</div>
         </div>
         <div className="rounded p-3" style={panel}>
-          <div style={muted}>HBM read / write</div>
-          <div className="tabular-nums">{snap?.hbmRdBytes ?? 0} B / {snap?.hbmWrBytes ?? 0} B</div>
-        </div>
-        <div className="rounded p-3" style={panel}>
           <div style={muted}>Tiles / K-V loads</div>
           <div className="tabular-nums">{snap?.tiles ?? 0} / {snap?.kvLoads ?? 0}</div>
         </div>
+        <div className="rounded p-3" style={panel}>
+          <div style={muted}>Expected tiles</div>
+          <div className="tabular-nums">{expected?.tiles ?? "-"}</div>
+        </div>
       </div>
+
+      <section className="rounded p-3" style={panel}>
+        <h2 className="mb-2 text-sm font-semibold">HBM traffic</h2>
+        <HbmMeter read={snap?.hbmRdBytes ?? 0} write={snap?.hbmWrBytes ?? 0} expected={expected} />
+      </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* schedule */}
@@ -315,16 +387,16 @@ export default function Visualizer() {
                   </div>
                 </>
               ) : (
-                <p style={muted}>
-                  NAIVE tiles go through HBM, not the tile core, so the per-element S, Z and P are not shown here.
-                  The row max m and sum l are shown below; the final probabilities P are in the matrix after the run.
-                </p>
-              )}
-              {settings.mode === 1 && (
-                <div className="grid grid-cols-2 gap-2">
-                  <Vec title="m" values={tile.m} fmt={(v) => fmt(v)} />
-                  <Vec title="l" values={tile.l} fmt={(v) => fmt(v)} />
-                </div>
+                <>
+                  <p style={muted}>
+                    NAIVE tiles go through HBM, not the tile core, so the per-element S, Z and P are not shown here.
+                    The row max m and sum l are shown below; the final probabilities are in the heatmap after the run.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Vec title="m" values={tile.m} fmt={(v) => fmt(v)} />
+                    <Vec title="l" values={tile.l} fmt={(v) => fmt(v)} />
+                  </div>
+                </>
               )}
               <Grid title="O (Q8.8 accumulator)" values={tile.o} cols={4} />
             </div>
@@ -334,6 +406,11 @@ export default function Visualizer() {
         </section>
       </div>
 
+      <section>
+        <h2 className="mb-2 text-sm font-semibold">On-chip K/V buffers</h2>
+        <SramPanel kv={kv} />
+      </section>
+
       {/* result */}
       {result && (
         <section className="space-y-4">
@@ -342,24 +419,7 @@ export default function Visualizer() {
             Max |engine − float attention| = {result.maxErr.toFixed(4)} (INT8 quantization of Q, K and V dominates).
           </p>
           <Grid title="O (dequantized)" values={result.out.flat()} cols={4} />
-          {result.probs && (
-            <div>
-              <h3 className="mb-2 text-sm font-semibold">Attention probabilities P (from HBM, NAIVE)</h3>
-              <div className="inline-grid gap-px" style={{ gridTemplateColumns: `repeat(${n}, 1rem)` }}>
-                {result.probs.flatMap((row, i) =>
-                  row.map((p, j) => (
-                    <div key={`${i}-${j}`} title={`${labels[i] ?? i} → ${labels[j] ?? j}: ${p.toFixed(3)}`}
-                      style={{ width: "1rem", height: "1rem", background: `rgba(88, 166, 255, ${Math.min(1, p * 1.6)})` }} />
-                  )),
-                )}
-              </div>
-              {labels.length === n && (
-                <div className="mt-2 flex flex-wrap gap-x-3 text-[10px]" style={muted}>
-                  {labels.map((l, i) => <span key={i}>{i}:{l}</span>)}
-                </div>
-              )}
-            </div>
-          )}
+          <AttentionHeatmap probs={result.probs} labels={labels} source={result.probsSource} />
         </section>
       )}
     </div>

@@ -71,6 +71,18 @@ for (const { fx, sim, last, finished } of sims) {
     check(JSON.stringify(t.o) === JSON.stringify(lt.o), "tile O differs from golden");
     console.log(`  last tile (qi=${lt.qi}, kj=${lt.kj}) state checked`);
   }
+  {
+    // The K/V buffer in use holds the last K/V tile loaded, which is K/V tile n/4-1 for every fixture (the last
+    // block's last tile). Its rows are the last four rows of the quantized K and V.
+    const kv = sim.getKVBuffers();
+    const lastK = fx.k.slice((fx.n - 4) * 4, fx.n * 4);
+    const lastV = fx.v.slice((fx.n - 4) * 4, fx.n * 4);
+    const bufK = kv.k.slice(kv.sel * 16, kv.sel * 16 + 16);
+    const bufV = kv.v.slice(kv.sel * 16, kv.sel * 16 + 16);
+    check(JSON.stringify(bufK) === JSON.stringify(lastK), `K buffer ${kv.sel} != last K tile`);
+    check(JSON.stringify(bufV) === JSON.stringify(lastV), `V buffer ${kv.sel} != last V tile`);
+    console.log(`  K/V buffer ${kv.sel} holds the last K/V tile`);
+  }
   if (fx.probs) {
     const probs = Array.from(sim.readProbabilities());
     const badP = probs.findIndex((v, i) => v !== fx.probs[i]);

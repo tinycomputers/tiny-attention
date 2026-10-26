@@ -375,7 +375,14 @@ Checks: `node wasm/test.mjs` (engine vs golden), `pnpm test` (quantization and t
 `pnpm typecheck`, `pnpm lint`, `pnpm build`. The browser run (built site, `astro preview`) showed no console errors; the
 FLASH run and the NAIVE run both finished with max deviation 0.0049 on the toy preset; the phone width has no horizontal scroll.
 
-Not yet built from the Phase 7 list in `docs/PLAN.md`: `MatrixEditor` (edit Q/K/V in the page; presets only for now),
-`SramPanel` (staging buffer contents), an `HbmMeter` bar, a FLASH attention heatmap (only NAIVE shows P), and the Playwright
-smoke test. The dev-server path also needs a fix (`astro dev` hung without output in this environment); `astro build` +
-`astro preview` works. The light/dark theme and 375 px checks are done for layout only; the theme check is not.
+Phase 7 items, all built: `MatrixEditor` (the Q, K and V values are editable; editing resets the run), `SramPanel` (the
+K and V tile buffers, read from the RTL through `dbg_kbuf`, `dbg_vbuf`, `dbg_kv_sel`, with the buffer in use outlined),
+`HbmMeter` (bytes so far against the expected total, from `web/src/lib/traffic-table.ts`, generated from
+`sim/golden/traffic.py`), and `AttentionHeatmap` (engine probabilities from HBM for NAIVE; the float reference for FLASH,
+which never stores P). The Playwright smoke test (`pnpm test:e2e`, five tests: FLASH output against float, step and back,
+NAIVE probabilities, editing and re-running, phone width) runs against the production build.
+
+Checks: `node wasm/test.mjs` (engine vs golden, now including the K/V buffer in use against the last tile loaded),
+`pnpm test` (quantization, tile order), `pnpm test:e2e`, `pnpm typecheck`, `pnpm lint`, `pnpm build`, `pytest sim/golden`
+(fixture, web-data and traffic-table freshness). The `astro dev` server hangs without output in this environment, so
+browser checks use `astro build` + `astro preview`.
