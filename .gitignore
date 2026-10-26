@@ -33,6 +33,7 @@ web/public/spike/
 .tools/*
 !.tools/setup.sh
 !.tools/emsdk.sh
+!.tools/fpga.sh
 
 # OS / editor cruft
 .DS_Store
