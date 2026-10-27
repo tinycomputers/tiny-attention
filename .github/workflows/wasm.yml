@@ -13,31 +13,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The harness uses Verilator 5 APIs (VerilatedContext); build from source like rtl.yml.
-      - name: Cache Verilator build
-        id: cache-verilator
-        uses: actions/cache@v4
-        with:
-          path: ~/verilator-install
-          key: verilator-v5.036-ubuntu-24.04
-
-      - name: Build Verilator v5.036 from source
-        if: steps.cache-verilator.outputs.cache-hit != 'true'
+      # The same Verilator build as the project's .tools/setup.sh (CMake, v5.036 source, same patch). The runtime's
+      # version string is compiled into the engine, so the build method has to match the committed one.
+      - name: Build Verilator v5.036 (as .tools/setup.sh)
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y autoconf flex bison libfl2 libfl-dev help2man perl build-essential
-          git clone --depth 1 --branch v5.036 https://github.com/verilator/verilator.git /tmp/verilator
-          cd /tmp/verilator
-          autoconf
-          ./configure --prefix="$HOME/verilator-install"
-          make -j$(nproc)
-          make install
+          sudo apt-get install -y cmake ninja-build autoconf flex bison libfl2 libfl-dev help2man perl build-essential
+          bash .tools/setup.sh
 
       - name: Add Verilator to PATH
-        run: echo "$HOME/verilator-install/bin" >> $GITHUB_PATH
+        run: echo "$GITHUB_WORKSPACE/.tools/verilator-install/bin" >> $GITHUB_PATH
 
+      # Pinned to the version the committed engine was built with: the compiled .wasm changes between Emscripten
+      # releases, and the freshness check below compares bytes.
       - name: Set up Emscripten
         uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: '6.0.13'
 
       - uses: actions/setup-node@v4
         with:
@@ -53,6 +45,14 @@ jobs:
         run: |
           test -f web/public/spike/counter.wasm
           echo "spike wasm: $(du -h web/public/spike/counter.wasm | cut -f1)"
+
+      # The committed engine (web/public, served by the site) must pass the golden fixtures as it is, before the
+      # rebuild below overwrites it. Byte-identical rebuilds across machines are not guaranteed, so behaviour is the check.
+      - name: Committed engine passes the golden fixtures
+        run: |
+          mkdir -p /tmp/committed
+          cp web/public/tiny_attn.mjs web/public/tiny_attn.wasm /tmp/committed/
+          ENGINE_DIR=/tmp/committed node wasm/test.mjs
 
       # The engine: Verilate tiny_attn_top, build the module, run the golden fixtures in Node, check the size budget.
       - name: Build engine WASM

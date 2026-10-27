@@ -8,7 +8,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const { default: createTinyAttn } = await import(join(root, "web/public/tiny_attn.mjs"));
+// ENGINE_DIR selects which build to test (CI tests the committed files before rebuilding them); default web/public.
+const engineDir = process.env.ENGINE_DIR ?? join(root, "web/public");
+const { default: createTinyAttn } = await import(join(engineDir, "tiny_attn.mjs"));
 const mod = await createTinyAttn();
 
 // engine runs only; quantize_cases.json holds quantization references for the web tests

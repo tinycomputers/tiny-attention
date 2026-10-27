@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 96" role="img" aria-label="TinyAttention">
+  <rect width="96" height="96" rx="16" fill="#0d1117"/>
+  <g transform="scale(1.5)">
+    <rect x="12" y="12" width="9" height="9" rx="2" fill="#3fb950" fill-opacity="1"/>
+    <rect x="23" y="12" width="9" height="9" rx="2" fill="#30363d" fill-opacity="0.35"/>
+    <rect x="34" y="12" width="9" height="9" rx="2" fill="#30363d" fill-opacity="0.35"/>
+    <rect x="45" y="12" width="9" height="9" rx="2" fill="#30363d" fill-opacity="0.35"/>
+    <rect x="12" y="23" width="9" height="9" rx="2" fill="#3fb950" fill-opacity="1"/>
+    <rect x="23" y="23" width="9" height="9" rx="2" fill="#3fb950" fill-opacity="1"/>
+    <rect x="34" y="23" width="9" height="9" rx="2" fill="#30363d" fill-opacity="0.35"/>
+    <rect x="45" y="23" width="9" height="9" rx="2" fill="#30363d" fill-opacity="0.35"/>
+    <rect x="12" y="34" width="9" height="9" rx="2" fill="#3fb950" fill-opacity="1"/>
+    <rect x="23" y="34" width="9" height="9" rx="2" fill="#3fb950" fill-opacity="1"/>
+    <rect x="34" y="34" width="9" height="9" rx="2" fill="#58a6ff" fill-opacity="1"/>
+    <rect x="45" y="34" width="9" height="9" rx="2" fill="#30363d" fill-opacity="0.35"/>
+    <rect x="12" y="45" width="9" height="9" rx="2" fill="#3fb950" fill-opacity="1"/>
+    <rect x="23" y="45" width="9" height="9" rx="2" fill="#3fb950" fill-opacity="1"/>
+    <rect x="34" y="45" width="9" height="9" rx="2" fill="#3fb950" fill-opacity="1"/>
+    <rect x="45" y="45" width="9" height="9" rx="2" fill="#3fb950" fill-opacity="1"/>
+  </g>
+  <text x="112" y="58" font-family="Inter, system-ui, -apple-system, Segoe UI, sans-serif" font-size="40" font-weight="700" fill="#c9d1d9">Tiny<tspan fill="#58a6ff">Attention</tspan></text>
+</svg>

@@ -4,8 +4,8 @@
 > running live in the browser.** You can watch the online softmax keep its running max and sum,
 > watch SRAM tiles fill and empty, and see why FlashAttention moves so much less data than standard attention.
 >
-> This is the fourth project in the series, after [tiny-gpu](https://github.com/deaneeth/tiny-gpu),
-> [tiny-tpu](https://github.com/deaneeth/tiny-tpu) and tiny-cpu. It takes over the toolchain tiny-cpu
+> This is the fourth project in the series, after [tiny-gpu](https://github.com/tinycomputers/tiny-gpu),
+> [tiny-tpu](https://github.com/tinycomputers/tiny-tpu) and tiny-cpu. It takes over the toolchain tiny-cpu
 > already proved:
 > `rtl/*.sv → Verilator → C++ harness → Emscripten → web/public/tiny_attn.wasm → React island → SVG`.
 
@@ -526,7 +526,7 @@ cd web && pnpm lint && pnpm typecheck && pnpm test && pnpm build
 
 ## 13. First week, concretely
 
-1. Create `deaneeth/tiny-attention`. Copy `.tools/`, `scripts/env.sh`, `.editorconfig`, the workflow skeletons, `web/` config
+1. Create `tinycomputers/tiny-attention` (done). Copy `.tools/`, `scripts/env.sh`, `.editorconfig`, the workflow skeletons, `web/` config
    and `wasm/emscripten_stubs.cpp` from tiny-cpu. Write `CLAUDE.md`, `AGENTS.md` and `CONTEXT.md`.
 2. Spike: two independent `counter.sv` model instances in one WASM page; get CI green.
 3. `float_ref.py` + `fixed.py` exp2 and recip with `gen_luts.py`; the first numerics plot (exp2 error vs LUT size).
