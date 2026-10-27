@@ -175,7 +175,7 @@ Every row is a test in this repository, run in GitHub Actions on each pull reque
 | Arithmetic blocks | cocotb unit suites | exhaustive exp2 and reciprocal sweeps; DMA burst timing cycle by cycle |
 | Golden model | `pytest sim/golden` | 54 tests: quantization, exp2 and reciprocal, both schedules against float, traffic formulas, presets, and freshness of every generated table |
 | Lint | Verilator `-Wall` | every module and the full design |
-| WebAssembly | `node wasm/test.mjs` | the compiled engine on golden fixtures; the committed build must match a fresh build (CI) |
+| WebAssembly | `node wasm/test.mjs` | the compiled engine on golden fixtures, both the committed build and a fresh build (CI) |
 | UART interface | cocotb test of the FPGA top | the engine driven over its serial protocol, bit-exact |
 | Web app | Vitest and Playwright | the quantizer and tile order against shared fixtures; every page in a real browser; the visualizer at phone width and in both colour schemes |
 

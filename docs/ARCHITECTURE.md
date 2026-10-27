@@ -388,9 +388,9 @@ Checks: `node wasm/test.mjs` (engine vs golden, now including the K/V buffer in 
 browser checks use `astro build` + `astro preview`.
 
 **Committed engine build.** `web/public/tiny_attn.{mjs,wasm}` are tracked: the Vercel build has no Emscripten, so `/app`
-needs the files in git. Rebuild with `bash wasm/build.sh` after any RTL or harness change and commit them with it. CI does
-not yet check that the committed files match a fresh build; the wasm workflow's `node wasm/test.mjs` checks behavior, not
-the files.
+needs the files in git. Rebuild with `bash wasm/build.sh` after any RTL or harness change and commit them with it. CI runs the golden
+fixtures against the committed files and against a fresh build. It does not require the bytes to match: the same sources
+built on different machines do not always give identical `.wasm` bytes, so behaviour is what is checked.
 
 ## 13. Phase 8: the other levels (L1, L2, L4)
 

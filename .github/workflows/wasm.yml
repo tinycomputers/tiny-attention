@@ -46,14 +46,17 @@ jobs:
           test -f web/public/spike/counter.wasm
           echo "spike wasm: $(du -h web/public/spike/counter.wasm | cut -f1)"
 
+      # The committed engine (web/public, served by the site) must pass the golden fixtures as it is, before the
+      # rebuild below overwrites it. Byte-identical rebuilds across machines are not guaranteed, so behaviour is the check.
+      - name: Committed engine passes the golden fixtures
+        run: |
+          mkdir -p /tmp/committed
+          cp web/public/tiny_attn.mjs web/public/tiny_attn.wasm /tmp/committed/
+          ENGINE_DIR=/tmp/committed node wasm/test.mjs
+
       # The engine: Verilate tiny_attn_top, build the module, run the golden fixtures in Node, check the size budget.
       - name: Build engine WASM
         run: bash wasm/build.sh
-
-      # The committed engine (web/public, served by the site) must be the build of the RTL in this commit.
-      # Fails if a fresh build differs from the committed files: rebuild with `bash wasm/build.sh` and commit.
-      - name: Committed engine matches a fresh build
-        run: git diff --exit-code -- web/public/tiny_attn.mjs web/public/tiny_attn.wasm
 
       - name: Engine golden fixtures (Node)
         run: node wasm/test.mjs
