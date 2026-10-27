@@ -47,5 +47,5 @@ web/public/spike/
 web/test-results/
 web/playwright-report/
 fpga/ecp5/build/
-.vercel
+/.vercel
 .env*
