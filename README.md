@@ -7,8 +7,8 @@ WebAssembly, and running live in your browser.
 
 ![The visualizer running one FLASH pass](docs/media/visualizer.png)
 
-Fourth project in the series after [tiny-gpu](https://github.com/deaneeth/tiny-gpu),
-[tiny-tpu](https://github.com/deaneeth/tiny-tpu) and tiny-cpu. Same rule as the others: nothing on screen is faked.
+Fourth project in the series after [tiny-gpu](https://github.com/tinycomputers/tiny-gpu),
+[tiny-tpu](https://github.com/tinycomputers/tiny-tpu) and [tiny-cpu](https://github.com/tinycomputers/tiny-cpu). Same rule as the others: nothing on screen is faked.
 Every value comes from a debug port on the compiled RTL, or from the golden model the RTL is checked against.
 
 ## What it does
