@@ -5,16 +5,17 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OBJ="$ROOT/wasm/build/obj"
-OUT="$ROOT/web/public"
+OBJ="wasm/build/obj"          # relative to ROOT: the build must not depend on where the repo lives
+OUT="web/public"
+cd "$ROOT"
 
 VROOT="$(verilator --getenv VERILATOR_ROOT)"
 [ -f "$VROOT/include/verilated.h" ] || { echo "VERILATOR_ROOT not found: $VROOT" >&2; exit 1; }
 
 RTL_TOP=tiny_attn_top
-SRCS=("$ROOT/rtl/lut_pkg.sv" "$ROOT/rtl/tiny_attn_pkg.sv")
-for f in "$ROOT"/rtl/*.sv; do
-    case "$f" in */lut_pkg.sv|*/tiny_attn_pkg.sv) ;; *) SRCS+=("$f") ;; esac
+SRCS=("rtl/lut_pkg.sv" "rtl/tiny_attn_pkg.sv")
+for f in rtl/*.sv; do
+    case "$f" in rtl/lut_pkg.sv|rtl/tiny_attn_pkg.sv) ;; *) SRCS+=("$f") ;; esac
 done
 
 echo "[1/2] Verilating ${RTL_TOP}..."
@@ -25,13 +26,16 @@ verilator --cc "${SRCS[@]}" --top-module "$RTL_TOP" --prefix Vtiny_attn_top --Md
 
 echo "[2/2] Compiling to WASM..."
 mkdir -p "$OUT"
+# -ffile-prefix-map strips the checkout and Verilator install paths from __FILE__ and debug info, so the same
+# sources and toolchain give the same bytes on any machine (CI checks this against the committed engine).
 em++ -O2 -std=c++17 -DVL_IGNORE_UNKNOWN_ARCH \
-    -I "$OBJ" -I "$VROOT/include" -I "$VROOT/include/vltstd" -I "$ROOT/wasm/harness" \
-    "$ROOT/wasm/harness/harness.cpp" "$ROOT/wasm/harness/bindings.cpp" \
+    -ffile-prefix-map="$ROOT"=. -ffile-prefix-map="$VROOT"=verilator \
+    -I "$OBJ" -I "$VROOT/include" -I "$VROOT/include/vltstd" -I "wasm/harness" \
+    "wasm/harness/harness.cpp" "wasm/harness/bindings.cpp" \
     "$OBJ"/Vtiny_attn_top*.cpp \
     "$VROOT/include/verilated.cpp" \
     "$VROOT/include/verilated_threads.cpp" \
-    "$ROOT/wasm/emscripten_stubs.cpp" \
+    "wasm/emscripten_stubs.cpp" \
     -lembind \
     -s MODULARIZE=1 -s EXPORT_ES6=1 -s ALLOW_MEMORY_GROWTH=1 \
     -s EXPORT_NAME=createTinyAttn -s ENVIRONMENT=web,node \
