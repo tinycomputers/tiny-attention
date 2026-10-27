@@ -58,6 +58,11 @@ jobs:
       - name: Build engine WASM
         run: bash wasm/build.sh
 
+      # The committed engine (web/public, served by the site) must be the build of the RTL in this commit.
+      # Fails if a fresh build differs from the committed files: rebuild with `bash wasm/build.sh` and commit.
+      - name: Committed engine matches a fresh build
+        run: git diff --exit-code -- web/public/tiny_attn.mjs web/public/tiny_attn.wasm
+
       - name: Engine golden fixtures (Node)
         run: node wasm/test.mjs
 
