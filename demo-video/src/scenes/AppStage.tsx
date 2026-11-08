@@ -119,7 +119,7 @@ export const AppStage: React.FC = () => {
         </ShiftedCard>
         <ShiftedCard from={M + 4} to={R - 4} f={f}>
           <FeatureCard from={0} to={R - M - 8} n="03" eyebrow="NAIVE VS FLASH" title={<>Nearly 4× less <span style={{ color: C.accent }}>memory.</span></>} body="Same inputs, both schedules. FLASH never writes the N×N matrix out to HBM.">
-            <Ratio f={f - M} cmpP={cmpP} sweepP={sweepP} />
+            <Ratio f={f - M} cmpP={cmpP} />
           </FeatureCard>
         </ShiftedCard>
         <ShiftedCard from={R + 6} to={END} f={f}>
@@ -203,17 +203,16 @@ const Stages: React.FC<{ glow: number[] }> = ({ glow }) => {
   );
 };
 
-const Ratio: React.FC<{ f: number; cmpP: number; sweepP: number }> = ({ f, cmpP, sweepP }) => {
+const Ratio: React.FC<{ f: number; cmpP: number }> = ({ f, cmpP }) => {
+  // The ratio and the byte counts below come from the same run (CMP), so they always agree.
   const a = CMP.naive.rd + CMP.naive.wr, b = CMP.flash.rd + CMP.flash.wr;
-  const last = SWEEP[SWEEP.length - 1];
-  const r1 = a / b, r2 = last.naiveBytes / last.flashBytes;
-  const ratio = r1 + (r2 - r1) * EASE.inOut(sweepP);
-  const lab = sweepP > 0.02 ? "at N = 32" : "this run";
+  const ratio = a / b;
+  const lab = "this run";
   return (
     <Enter delay={22} y={30}>
       <Panel style={{ padding: "18px 24px" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-          <span style={{ fontFamily: FONT.sans, fontWeight: 800, fontSize: 104, letterSpacing: "-0.04em", color: C.accent, textShadow: "none", fontVariantNumeric: "tabular-nums", opacity: cmpP }}>{(ratio * Math.min(1, cmpP * 1.01)).toFixed(1)}×</span>
+          <span style={{ fontFamily: FONT.sans, fontWeight: 800, fontSize: 104, letterSpacing: "-0.04em", color: C.accent, textShadow: "none", fontVariantNumeric: "tabular-nums", opacity: cmpP }}>{ratio.toFixed(1)}×</span>
           <span style={{ fontFamily: FONT.mono, fontSize: 22, color: C.muted }}>{lab}</span>
         </div>
         <div style={{ fontFamily: FONT.mono, fontSize: 21, color: C.muted, marginTop: 4, fontVariantNumeric: "tabular-nums" }}>
