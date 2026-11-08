@@ -37,7 +37,23 @@
     <a href="https://tiny-attention.vercel.app"><img src="https://img.shields.io/badge/Open%20Live%20Visualizer-58a6ff?style=for-the-badge&logoColor=black" alt="Open Live Visualizer" /></a>
     &nbsp;
     <a href="https://tiny-attention.vercel.app/docs/flashattention"><img src="https://img.shields.io/badge/Read%20the%20Docs-3fb950?style=for-the-badge" alt="Read the Docs" /></a>
+    &nbsp;
+    <a href="docs/media/tinyattention-demo.mp4"><img src="https://img.shields.io/badge/Watch%20the%20Demo-bc8cff?style=for-the-badge" alt="Watch the demo" /></a>
   </p>
+</div>
+
+---
+
+## Watch it
+
+<div align="center">
+
+[![TinyAttention demo: attention has a memory problem, then the engine running in the browser](docs/media/tinyattention-demo.gif)](docs/media/tinyattention-demo.mp4)
+
+The preview loops on its own. The full video runs about a minute, with narration, and shows the RTL, the live visualizer and the traffic numbers.
+
+**[▶ Watch the full demo](docs/media/tinyattention-demo.mp4)** · [Source and render pipeline](demo-video/)
+
 </div>
 
 ---
@@ -247,6 +263,7 @@ tiny-attention/
 ├── wasm/                      Verilator and Emscripten build, C++ harness, Node test
 ├── fpga/ecp5/                 UART wrapper, ECP5 synthesis script
 ├── web/                       Astro and React site: /app visualizer, /docs pages, tests
+├── demo-video/                Remotion project for the one-minute demo (scenes, narration, render)
 └── docs/                      ARCHITECTURE, PLAN, STATE_SCHEMA, media
 ```
 
