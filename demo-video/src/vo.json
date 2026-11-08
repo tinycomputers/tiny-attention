@@ -1,0 +1,30 @@
+{
+ "hook": {
+  "text": "Attention is the engine inside every modern AI model. It also has a memory problem.",
+  "sec": 5.014
+ },
+ "intro": {
+  "text": "This is TinyAttention. A real FlashAttention engine, written in SystemVerilog. And it runs live, right here in your browser.",
+  "sec": 7.752
+ },
+ "tiles": {
+  "text": "Instead of storing the whole score matrix, it works one small tile at a time. An online softmax keeps only a running max and a running sum.",
+  "sec": 7.951
+ },
+ "engine": {
+  "text": "Two eight-bit systolic arrays do the math. Nothing on screen is faked. Every value you see comes straight from the hardware design.",
+  "sec": 6.626
+ },
+ "memory": {
+  "text": "Both schedules compute attention on the same inputs. But flash moves nearly four times less memory on this run. And the gap keeps growing as the sequence gets longer.",
+  "sec": 8.866
+ },
+ "trust": {
+  "text": "Every result is checked bit-exact against a golden model. Step through it clock by clock, and watch each tile resolve.",
+  "sec": 6.883
+ },
+ "cta": {
+  "text": "Open the engine. Pick a preset, press run, and watch attention unfold, one tile at a time.",
+  "sec": 5.757
+ }
+}
